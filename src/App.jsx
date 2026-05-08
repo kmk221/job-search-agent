@@ -11,6 +11,7 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [expandedJob, setExpandedJob] = useState(null);
   const [userTargets, setUserTargets] = useState([]);
+  const [notionSync, setNotionSync] = useState({});
 
   // Mock data evaluated against Kristin's JOB_SEARCH_SKILL.md
   // North Star Principle: Use tech to enable tangible, real-world human impact
@@ -261,6 +262,47 @@ const App = () => {
     );
   };
 
+  const saveToNotion = async (job, e) => {
+    if (e) e.stopPropagation();
+    const current = notionSync[job.id]?.status;
+    if (current === 'saving' || current === 'saved') return;
+
+    setNotionSync(prev => ({ ...prev, [job.id]: { status: 'saving' } }));
+    if (!userTargets.includes(job.id)) {
+      setUserTargets(prev => [...prev, job.id]);
+    }
+
+    try {
+      const res = await fetch('/api/save-to-notion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          salary: job.salary,
+          stage: job.stage,
+          industry: job.industry,
+          link: job.link,
+          fitScore: job.fitScore,
+          fitReasoning: job.fitReasoning,
+          criteria: job.criteria,
+          northStarAlignment: job.northStarAlignment,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      setNotionSync(prev => ({ ...prev, [job.id]: { status: 'saved' } }));
+    } catch (err) {
+      setNotionSync(prev => ({
+        ...prev,
+        [job.id]: { status: 'error', message: err.message },
+      }));
+    }
+  };
+
   const getNorthStarBadgeColor = (alignment) => {
     switch (alignment) {
       case 'Perfect':
@@ -363,15 +405,35 @@ const App = () => {
                       <Sparkles className="badge-icon" />
                       {job.northStarAlignment}
                     </div>
-                    <button
-                      className={`btn ${userTargets.includes(job.id) ? 'btn-active' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleTarget(job.id);
-                      }}
-                    >
-                      {userTargets.includes(job.id) ? '✓ Interested' : 'Save'}
-                    </button>
+                    {(() => {
+                      const status = notionSync[job.id]?.status;
+                      const isSaving = status === 'saving';
+                      const isSaved = status === 'saved';
+                      const isError = status === 'error';
+                      const isTarget = userTargets.includes(job.id);
+                      const className = `btn ${
+                        isSaved ? 'btn-saved'
+                        : isSaving ? 'btn-saving'
+                        : isError ? 'btn-error'
+                        : isTarget ? 'btn-active'
+                        : ''
+                      }`.trim();
+                      const label = isSaving ? 'Saving...'
+                        : isSaved ? '✅ Saved to Notion'
+                        : isError ? '❌ Failed - try again'
+                        : isTarget ? '✓ Interested'
+                        : 'Save';
+                      return (
+                        <button
+                          className={className}
+                          disabled={isSaving || isSaved}
+                          title={isError ? notionSync[job.id]?.message : undefined}
+                          onClick={(e) => saveToNotion(job, e)}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
 

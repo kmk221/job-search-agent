@@ -75,6 +75,33 @@ This Phase 2 tool is the foundation for:
 - **Phase 3:** Notion API integration, LinkedIn employee search, AI outreach drafting
 - **Phase 4+:** Autonomous weekly job search, offer comparison, interview tracking
 
+## Phase 3 Setup
+
+Phase 3 Week 1 adds a "Save to Notion" sync. Clicking **Interested** on a job card calls a Vercel serverless function (`/api/save-to-notion`) that writes a new page to your Notion database.
+
+### Required environment variables
+
+The serverless function reads two values from `process.env`:
+
+| Variable | Value |
+| --- | --- |
+| `NOTION_TOKEN` | Your Notion integration's internal integration token (do **not** commit) |
+| `NOTION_DATABASE_ID` | `35a24d4a997080d0b5cfca370510138c` |
+
+`.env.local` is gitignored and used only for local `vercel dev` runs. Production reads from Vercel's environment variables.
+
+### Setting env vars in Vercel
+
+1. Open the [Vercel dashboard](https://vercel.com/dashboard) → select the `job-search-agent` project.
+2. **Settings** → **Environment Variables**.
+3. Add `NOTION_TOKEN` (paste the token from 1Password) and `NOTION_DATABASE_ID`.
+4. Apply each to **Production**, **Preview**, and **Development**.
+5. **Redeploy** from the Deployments tab — env-var changes only take effect on a new deployment.
+
+### Notion database requirements
+
+The integration token must be invited to the target database (Notion → database → `...` → **Connections** → add your integration). The function writes to these properties: Role Title, Company, Status, Fit Score, Fit Tier, Salary Range, Salary Min, Location, Remote, Stage, Industry, Job URL, Company URL, North Star Match, Why Good Fit, Source.
+
 ## Deployment
 
 Deploy to Vercel with one click:
