@@ -204,11 +204,40 @@ const App = () => {
 
   useEffect(() => {
     setLoading(true);
-    setTimeout(() => {
+
+    const savedPromise = fetch('/api/list-saved-jobs')
+      .then((res) => (res.ok ? res.json() : { saved: [] }))
+      .catch(() => ({ saved: [] }));
+    const delay = new Promise((resolve) => setTimeout(resolve, 800));
+
+    Promise.all([savedPromise, delay]).then(([data]) => {
+      const savedList = Array.isArray(data?.saved) ? data.saved : [];
+      const norm = (s) => String(s || '').trim().toLowerCase();
+      const nextSync = {};
+      const nextTargets = [];
+
+      mockJobs.forEach((job) => {
+        const match = savedList.find(
+          (entry) =>
+            norm(entry.company) === norm(job.company) &&
+            norm(entry.title) === norm(job.title),
+        );
+        if (match) {
+          nextSync[job.id] = {
+            status: 'saved',
+            pageId: match.pageId,
+            pageUrl: match.pageUrl,
+          };
+          nextTargets.push(job.id);
+        }
+      });
+
       setJobs(mockJobs);
       setFilteredJobs(mockJobs);
+      setNotionSync(nextSync);
+      setUserTargets(nextTargets);
       setLoading(false);
-    }, 800);
+    });
   }, []);
 
   const handleSearch = (query) => {
