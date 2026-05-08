@@ -25,7 +25,7 @@ const App = () => {
       stage: 'Series D',
       industry: 'Marketplace / Small Business',
       funding: '$500M+',
-      link: 'https://faire.com/careers',
+      link: 'https://job-boards.greenhouse.io/faire?departments[]=Design',
       fitScore: 98,
       northStarAlignment: 'Perfect',
       coreStrengths: ['Rules Engine - Discovery/Influence', 'Order Management - Constraint-Aware', 'Positions - Systems Scaling'],
@@ -48,7 +48,7 @@ const App = () => {
       stage: 'Series D',
       industry: 'FinTech / Spend Management',
       funding: '$750M+',
-      link: 'https://ramp.com/careers',
+      link: 'https://jobs.ashbyhq.com/ramp?departmentId=design',
       fitScore: 89,
       northStarAlignment: 'Strong',
       coreStrengths: ['Rules Engine - Discovery/Influence', 'Positions - Systems Scaling'],
@@ -71,7 +71,7 @@ const App = () => {
       stage: 'Series E',
       industry: 'FinTech / Infrastructure',
       funding: '$300M+',
-      link: 'https://plaid.com/careers',
+      link: 'https://plaid.com/careers/openings/?team=design',
       fitScore: 86,
       northStarAlignment: 'Strong',
       coreStrengths: ['Rules Engine - Discovery/Influence', 'Order Management - Constraint-Aware'],
@@ -94,7 +94,7 @@ const App = () => {
       stage: 'Public',
       industry: 'E-Commerce / Creator Platform',
       funding: 'Public',
-      link: 'https://shopify.com/careers',
+      link: 'https://www.shopify.com/careers/search?keywords=designer',
       fitScore: 87,
       northStarAlignment: 'Strong',
       coreStrengths: ['Positions - Systems Scaling', 'Rules Engine - Discovery/Influence'],
@@ -117,7 +117,7 @@ const App = () => {
       stage: 'Series D',
       industry: 'Creator Platform / No-Code',
       funding: '$150M+',
-      link: 'https://webflow.com/careers',
+      link: 'https://webflow.com/careers#open-positions',
       fitScore: 85,
       northStarAlignment: 'Strong',
       coreStrengths: ['Positions - Systems Scaling', 'Order Management - Constraint-Aware'],
@@ -163,7 +163,7 @@ const App = () => {
       stage: 'Series E+',
       industry: 'EdTech / Career Development',
       funding: '$175M Series E',
-      link: 'https://guildeducation.com/careers',
+      link: 'https://job-boards.greenhouse.io/guild?departments[]=Design',
       fitScore: 81,
       northStarAlignment: 'Moderate',
       coreStrengths: ['Positions - Systems Scaling'],
@@ -186,7 +186,7 @@ const App = () => {
       stage: 'Unicorn',
       industry: 'FinTech / Payments',
       funding: 'Private ($95B valuation)',
-      link: 'https://stripe.com/careers',
+      link: 'https://stripe.com/jobs/search?teams=Design',
       fitScore: 84,
       northStarAlignment: 'Strong',
       coreStrengths: ['Positions - Systems Scaling', 'Rules Engine - Discovery/Influence'],
@@ -290,15 +290,61 @@ const App = () => {
           northStarAlignment: job.northStarAlignment,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Request failed (${res.status})`);
       }
-      setNotionSync(prev => ({ ...prev, [job.id]: { status: 'saved' } }));
+      setNotionSync(prev => ({
+        ...prev,
+        [job.id]: {
+          status: 'saved',
+          pageId: data.pageId,
+          pageUrl: data.pageUrl,
+        },
+      }));
     } catch (err) {
       setNotionSync(prev => ({
         ...prev,
         [job.id]: { status: 'error', message: err.message },
+      }));
+    }
+  };
+
+  const removeFromNotion = async (job, e) => {
+    if (e) e.stopPropagation();
+    const entry = notionSync[job.id];
+    if (!entry || !entry.pageId || entry.status === 'removing') return;
+    const { pageId } = entry;
+
+    setNotionSync(prev => ({
+      ...prev,
+      [job.id]: { ...prev[job.id], status: 'removing' },
+    }));
+
+    try {
+      const res = await fetch('/api/remove-from-notion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      setNotionSync(prev => {
+        const next = { ...prev };
+        delete next[job.id];
+        return next;
+      });
+      setUserTargets(prev => prev.filter(id => id !== job.id));
+    } catch (err) {
+      setNotionSync(prev => ({
+        ...prev,
+        [job.id]: {
+          ...prev[job.id],
+          status: 'error',
+          message: err.message,
+        },
       }));
     }
   };
@@ -406,28 +452,65 @@ const App = () => {
                       {job.northStarAlignment}
                     </div>
                     {(() => {
-                      const status = notionSync[job.id]?.status;
+                      const entry = notionSync[job.id];
+                      const status = entry?.status;
+                      const pageUrl = entry?.pageUrl;
                       const isSaving = status === 'saving';
                       const isSaved = status === 'saved';
+                      const isRemoving = status === 'removing';
                       const isError = status === 'error';
                       const isTarget = userTargets.includes(job.id);
+
+                      if (isSaved) {
+                        return (
+                          <>
+                            {pageUrl ? (
+                              <a
+                                className="btn btn-saved"
+                                href={pageUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                ✅ Saved — View in Notion ↗
+                              </a>
+                            ) : (
+                              <span className="btn btn-saved">✅ Saved to Notion</span>
+                            )}
+                            <button
+                              className="btn btn-undo"
+                              onClick={(e) => removeFromNotion(job, e)}
+                              title="Remove from Notion"
+                            >
+                              Undo
+                            </button>
+                          </>
+                        );
+                      }
+
+                      if (isRemoving) {
+                        return (
+                          <button className="btn" disabled>
+                            Removing...
+                          </button>
+                        );
+                      }
+
                       const className = `btn ${
-                        isSaved ? 'btn-saved'
-                        : isSaving ? 'btn-saving'
+                        isSaving ? 'btn-saving'
                         : isError ? 'btn-error'
                         : isTarget ? 'btn-active'
                         : ''
                       }`.trim();
                       const label = isSaving ? 'Saving...'
-                        : isSaved ? '✅ Saved to Notion'
                         : isError ? '❌ Failed - try again'
                         : isTarget ? '✓ Interested'
                         : 'Save';
                       return (
                         <button
                           className={className}
-                          disabled={isSaving || isSaved}
-                          title={isError ? notionSync[job.id]?.message : undefined}
+                          disabled={isSaving}
+                          title={isError ? entry?.message : undefined}
                           onClick={(e) => saveToNotion(job, e)}
                         >
                           {label}

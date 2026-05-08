@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       pageId: page.id,
-      url: page.url,
+      pageUrl: page.url,
     });
   } catch (error) {
     console.error('Notion sync failed:', error);

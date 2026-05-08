@@ -245,6 +245,31 @@ h1 {
   color: white;
 }
 
+.btn-saved {
+  background: #dcfce7;
+  color: #166534;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+a.btn-saved:hover {
+  background: #bbf7d0;
+  text-decoration: none;
+}
+
+.btn-undo {
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-undo:hover {
+  background: #f1f5f9;
+  color: #dc2626;
+  border-color: #dc2626;
+}
+
 .job-meta {
   display: flex;
   flex-wrap: wrap;
