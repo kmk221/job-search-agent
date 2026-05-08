@@ -365,7 +365,6 @@ const App = () => {
         delete next[job.id];
         return next;
       });
-      setUserTargets(prev => prev.filter(id => id !== job.id));
     } catch (err) {
       setNotionSync(prev => ({
         ...prev,
