@@ -15,11 +15,22 @@ export default async function handler(req, res) {
 
   try {
     const notion = new Client({ auth: NOTION_TOKEN });
+
+    // @notionhq/client v5 removed databases.query; databases now contain one
+    // or more data sources, and queries run against a data source.
+    const database = await notion.databases.retrieve({ database_id: NOTION_DATABASE_ID });
+    const dataSourceId = database.data_sources?.[0]?.id;
+    if (!dataSourceId) {
+      return res.status(500).json({
+        error: 'Notion database has no accessible data sources.',
+      });
+    }
+
     const pages = [];
     let cursor;
     do {
-      const response = await notion.databases.query({
-        database_id: NOTION_DATABASE_ID,
+      const response = await notion.dataSources.query({
+        data_source_id: dataSourceId,
         start_cursor: cursor,
         page_size: 100,
       });
