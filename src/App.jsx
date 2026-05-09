@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, DollarSign, CheckCircle2, XCircle, ExternalLink, Loader2, Sparkles } from 'lucide-react';
+import { Search, MapPin, DollarSign, CheckCircle2, XCircle, ExternalLink, Sparkles } from 'lucide-react';
 import './App.css';
+import { useSavedJobs } from './hooks/useSavedJobs';
 
 const App = () => {
   const [jobs, setJobs] = useState([]);
@@ -8,10 +9,15 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('all');
   const [selectedStage, setSelectedStage] = useState('all');
-  const [loading, setLoading] = useState(false);
   const [expandedJob, setExpandedJob] = useState(null);
   const [userTargets, setUserTargets] = useState([]);
   const [notionSync, setNotionSync] = useState({});
+
+  const {
+    loading: savedLoading,
+    isJobSaved,
+    updateLocalState,
+  } = useSavedJobs();
 
   // Mock data evaluated against Kristin's JOB_SEARCH_SKILL.md
   // North Star Principle: Use tech to enable tangible, real-world human impact
@@ -203,42 +209,39 @@ const App = () => {
   ];
 
   useEffect(() => {
-    setLoading(true);
+    setJobs(mockJobs);
+    setFilteredJobs(mockJobs);
+  }, []);
 
-    const savedPromise = fetch('/api/list-saved-jobs')
-      .then((res) => (res.ok ? res.json() : { saved: [] }))
-      .catch(() => ({ saved: [] }));
-    const delay = new Promise((resolve) => setTimeout(resolve, 800));
+  useEffect(() => {
+    if (savedLoading || jobs.length === 0) return;
 
-    Promise.all([savedPromise, delay]).then(([data]) => {
-      const savedList = Array.isArray(data?.saved) ? data.saved : [];
-      const norm = (s) => String(s || '').trim().toLowerCase();
-      const nextSync = {};
-      const nextTargets = [];
+    const matches = [];
+    jobs.forEach((job) => {
+      const match = isJobSaved(job.company, job.title);
+      if (match) matches.push({ jobId: job.id, match });
+    });
+    if (matches.length === 0) return;
 
-      mockJobs.forEach((job) => {
-        const match = savedList.find(
-          (entry) =>
-            norm(entry.company) === norm(job.company) &&
-            norm(entry.title) === norm(job.title),
-        );
-        if (match) {
-          nextSync[job.id] = {
+    setNotionSync((prev) => {
+      const next = { ...prev };
+      matches.forEach(({ jobId, match }) => {
+        if (next[jobId]?.status !== 'saved' || next[jobId]?.pageId !== match.pageId) {
+          next[jobId] = {
             status: 'saved',
             pageId: match.pageId,
             pageUrl: match.pageUrl,
           };
-          nextTargets.push(job.id);
         }
       });
-
-      setJobs(mockJobs);
-      setFilteredJobs(mockJobs);
-      setNotionSync(nextSync);
-      setUserTargets(nextTargets);
-      setLoading(false);
+      return next;
     });
-  }, []);
+    setUserTargets((prev) => {
+      const set = new Set(prev);
+      matches.forEach(({ jobId }) => set.add(jobId));
+      return Array.from(set);
+    });
+  }, [savedLoading, jobs, isJobSaved]);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -331,6 +334,16 @@ const App = () => {
           pageUrl: data.pageUrl,
         },
       }));
+      updateLocalState({
+        type: 'add',
+        entry: {
+          pageId: data.pageId,
+          pageUrl: data.pageUrl,
+          roleTitle: job.title,
+          company: job.company,
+          status: 'Interested',
+        },
+      });
     } catch (err) {
       setNotionSync(prev => ({
         ...prev,
@@ -365,6 +378,7 @@ const App = () => {
         delete next[job.id];
         return next;
       });
+      updateLocalState({ type: 'remove', pageId });
     } catch (err) {
       setNotionSync(prev => ({
         ...prev,
@@ -449,12 +463,7 @@ const App = () => {
       </div>
 
       <div className="jobs-list">
-        {loading ? (
-          <div className="loading">
-            <Loader2 className="loading-icon" />
-            <p>Searching jobs...</p>
-          </div>
-        ) : filteredJobs.length === 0 ? (
+        {filteredJobs.length === 0 ? (
           <div className="empty">
             <p>No jobs match your filters. Try adjusting your search.</p>
           </div>
@@ -479,7 +488,11 @@ const App = () => {
                       <Sparkles className="badge-icon" />
                       {job.northStarAlignment}
                     </div>
-                    {(() => {
+                    <div
+                      className={`action-area ${savedLoading ? 'action-area--syncing' : ''}`}
+                      aria-busy={savedLoading}
+                    >
+                      {(() => {
                       const entry = notionSync[job.id];
                       const status = entry?.status;
                       const pageUrl = entry?.pageUrl;
@@ -537,7 +550,7 @@ const App = () => {
                       return (
                         <button
                           className={className}
-                          disabled={isSaving}
+                          disabled={isSaving || savedLoading}
                           title={isError ? entry?.message : undefined}
                           onClick={(e) => saveToNotion(job, e)}
                         >
@@ -545,6 +558,7 @@ const App = () => {
                         </button>
                       );
                     })()}
+                    </div>
                   </div>
                 </div>
 

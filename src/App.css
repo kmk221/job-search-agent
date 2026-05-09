@@ -270,6 +270,22 @@ a.btn-saved:hover {
   border-color: #dc2626;
 }
 
+.action-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.2s ease;
+}
+
+.action-area--syncing {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.action-area--syncing .btn {
+  cursor: progress;
+}
+
 .job-meta {
   display: flex;
   flex-wrap: wrap;
