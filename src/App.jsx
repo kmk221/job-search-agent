@@ -1,7 +1,70 @@
-import React, { useState, useEffect } from 'react';
-import { Search, MapPin, DollarSign, CheckCircle2, XCircle, ExternalLink, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, MapPin, DollarSign, CheckCircle2, XCircle, ExternalLink, Sparkles, Plus, X, PenLine } from 'lucide-react';
 import './App.css';
 import { useSavedJobs } from './hooks/useSavedJobs';
+import AddJobModal from './components/AddJobModal';
+
+function applyFilters(list, query, location, stage) {
+  let filtered = list;
+  if (query) {
+    const q = query.toLowerCase();
+    filtered = filtered.filter(job =>
+      (job.company || '').toLowerCase().includes(q) ||
+      (job.title || '').toLowerCase().includes(q) ||
+      (job.industry || '').toLowerCase().includes(q)
+    );
+  }
+  if (location !== 'all') {
+    filtered = filtered.filter(job =>
+      (job.location || '').toLowerCase().includes(location.toLowerCase())
+    );
+  }
+  if (stage !== 'all') {
+    filtered = filtered.filter(job => job.stage === stage);
+  }
+  return filtered;
+}
+
+function savedJobToCardShape(entry) {
+  const score = typeof entry.fitScore === 'number' ? entry.fitScore : 0;
+  const northStarMatch = Boolean(entry.northStarMatch);
+  const salaryOnTarget = typeof entry.salaryMin === 'number' ? entry.salaryMin >= 180000 : true;
+  const targetLocation = /remote|austin|denver|portland/i.test(entry.location || '');
+  return {
+    id: `manual-${entry.pageId}`,
+    pageId: entry.pageId,
+    pageUrl: entry.pageUrl,
+    company: entry.company || '',
+    title: entry.roleTitle || '',
+    location: entry.location || '',
+    salary: entry.salary || '',
+    stage: entry.stage || 'Unknown',
+    industry: entry.industry || '',
+    funding: '',
+    link: entry.link || '',
+    companyUrl: entry.companyUrl || '',
+    fitScore: score,
+    northStarAlignment: deriveAlignmentLabel(score, northStarMatch),
+    coreStrengths: [],
+    fitReasoning: entry.fitReasoning || '',
+    source: entry.source || 'Manual entry',
+    criteria: {
+      salary: salaryOnTarget,
+      stage: true,
+      location: targetLocation,
+      industry: true,
+      designFit: true,
+      northStar: northStarMatch,
+    },
+  };
+}
+
+function deriveAlignmentLabel(score, northStarMatch) {
+  if (!northStarMatch) return 'Moderate';
+  if (score >= 90) return 'Perfect';
+  if (score >= 75) return 'Strong';
+  return 'Moderate';
+}
 
 const App = () => {
   const [jobs, setJobs] = useState([]);
@@ -13,11 +76,22 @@ const App = () => {
   const [userTargets, setUserTargets] = useState([]);
   const [notionSync, setNotionSync] = useState({});
 
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [toast, setToast] = useState(null);
+
   const {
+    savedJobs,
     loading: savedLoading,
     isJobSaved,
     updateLocalState,
+    refetch: refetchSavedJobs,
   } = useSavedJobs();
+
+  const manualJobs = useMemo(() => {
+    return savedJobs
+      .filter((s) => s.source === 'Manual entry')
+      .map(savedJobToCardShape);
+  }, [savedJobs]);
 
   // Mock data evaluated against Kristin's JOB_SEARCH_SKILL.md
   // North Star Principle: Use tech to enable tangible, real-world human impact
@@ -209,9 +283,11 @@ const App = () => {
   ];
 
   useEffect(() => {
-    setJobs(mockJobs);
-    setFilteredJobs(mockJobs);
-  }, []);
+    const combined = [...manualJobs, ...mockJobs];
+    setJobs(combined);
+    setFilteredJobs(applyFilters(combined, searchQuery, selectedLocation, selectedStage));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualJobs]);
 
   useEffect(() => {
     if (savedLoading || jobs.length === 0) return;
@@ -243,6 +319,18 @@ const App = () => {
     });
   }, [savedLoading, jobs, isJobSaved]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const handleManualSaved = async ({ pageUrl, title, company }) => {
+    setShowAddModal(false);
+    setToast({ kind: 'success', text: `Saved "${title}" at ${company} to Notion.`, pageUrl });
+    await refetchSavedJobs();
+  };
+
   const handleSearch = (query) => {
     setSearchQuery(query);
     filterJobs(query, selectedLocation, selectedStage);
@@ -259,27 +347,7 @@ const App = () => {
   };
 
   const filterJobs = (query, location, stage) => {
-    let filtered = jobs;
-
-    if (query) {
-      filtered = filtered.filter(job =>
-        job.company.toLowerCase().includes(query.toLowerCase()) ||
-        job.title.toLowerCase().includes(query.toLowerCase()) ||
-        job.industry.toLowerCase().includes(query.toLowerCase())
-      );
-    }
-
-    if (location !== 'all') {
-      filtered = filtered.filter(job =>
-        job.location.toLowerCase().includes(location.toLowerCase())
-      );
-    }
-
-    if (stage !== 'all') {
-      filtered = filtered.filter(job => job.stage === stage);
-    }
-
-    setFilteredJobs(filtered);
+    setFilteredJobs(applyFilters(jobs, query, location, stage));
   };
 
   const getCriteriaStatus = (job) => {
@@ -311,6 +379,7 @@ const App = () => {
         body: JSON.stringify({
           title: job.title,
           company: job.company,
+          companyUrl: job.companyUrl,
           location: job.location,
           salary: job.salary,
           stage: job.stage,
@@ -319,7 +388,8 @@ const App = () => {
           fitScore: job.fitScore,
           fitReasoning: job.fitReasoning,
           criteria: job.criteria,
-          northStarAlignment: job.northStarAlignment,
+          northStarMatch: job.criteria?.northStar,
+          source: job.source || 'Job Scout',
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -462,6 +532,17 @@ const App = () => {
         <div className="job-count">{filteredJobs.length} jobs match your criteria</div>
       </div>
 
+      <div className="jobs-toolbar">
+        <button
+          type="button"
+          className="btn btn-primary btn-add"
+          onClick={() => setShowAddModal(true)}
+        >
+          <Plus className="btn-icon" />
+          Add Job Manually
+        </button>
+      </div>
+
       <div className="jobs-list">
         {filteredJobs.length === 0 ? (
           <div className="empty">
@@ -488,6 +569,12 @@ const App = () => {
                       <Sparkles className="badge-icon" />
                       {job.northStarAlignment}
                     </div>
+                    {job.source === 'Manual entry' && (
+                      <div className="badge badge-manual" title="Manually added">
+                        <PenLine className="badge-icon" />
+                        Manual
+                      </div>
+                    )}
                     <div
                       className={`action-area ${savedLoading ? 'action-area--syncing' : ''}`}
                       aria-busy={savedLoading}
@@ -691,6 +778,28 @@ const App = () => {
           <strong>Next:</strong> Phase 3 adds Notion API + LinkedIn integration + autonomous weekly search.
         </p>
       </div>
+
+      {showAddModal && (
+        <AddJobModal
+          onClose={() => setShowAddModal(false)}
+          onSaved={handleManualSaved}
+        />
+      )}
+
+      {toast && (
+        <div className={`toast toast-${toast.kind}`} role="status">
+          <CheckCircle2 className="toast-icon" />
+          <span className="toast-text">{toast.text}</span>
+          {toast.pageUrl && (
+            <a className="toast-link" href={toast.pageUrl} target="_blank" rel="noopener noreferrer">
+              View in Notion ↗
+            </a>
+          )}
+          <button className="toast-close" onClick={() => setToast(null)} aria-label="Dismiss">
+            <X className="toast-icon" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

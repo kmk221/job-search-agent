@@ -53,7 +53,7 @@ function buildNotionProperties(job) {
       rich_text: [{ text: { content: String(job.company).slice(0, 2000) } }],
     },
     'Status': { select: { name: 'Interested' } },
-    'Source': { select: { name: 'Job Scout' } },
+    'Source': { select: { name: normalizeSource(job.source) } },
   };
 
   if (typeof job.fitScore === 'number' && Number.isFinite(job.fitScore)) {
@@ -131,6 +131,21 @@ function parseSalaryMin(salary) {
 
 function isRemote(location) {
   return typeof location === 'string' && location.toLowerCase().includes('remote');
+}
+
+const VALID_SOURCES = new Set([
+  'Job Scout',
+  'Manual entry',
+  "Lenny's Newsletter",
+  'LinkedIn',
+  'Referral',
+  'VC Portfolio',
+  'Other',
+]);
+
+function normalizeSource(source) {
+  if (typeof source === 'string' && VALID_SOURCES.has(source)) return source;
+  return 'Job Scout';
 }
 
 function parseIndustries(industry) {

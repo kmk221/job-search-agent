@@ -49,15 +49,31 @@ Replace the current hardcoded 8 jobs with real-time pulls from multiple sources.
 
 **Goal:** Job listings come from a dynamic pipeline, not a static array. Expand discoverable opportunities beyond what's manually curated.
 
-**Potential sources to integrate:**
-- [ ] LinkedIn Jobs API (via RapidAPI — same provider used for employee search)
-- [ ] Greenhouse boards API (free, many companies use it: Faire, Ramp, Stripe, etc.)
-- [ ] Ashby boards API (free, used by Ramp and others)
-- [ ] Wellfound (formerly AngelList) — startup-focused
-- [ ] Y Combinator Work at a Startup
+### Sources to integrate
+
+**User's primary sources:**
 - [ ] Lenny's Newsletter job board
-- [ ] VC portfolio company careers pages (Sequoia, a16z, NEA, First Round, etc.)
-- [ ] Built In (already showing up in your search results — has city-specific boards)
+- [ ] VC portfolio company career pages: NEA, First Round, Nascent VC, Collaborative Fund, Women in VC
+- [ ] Workflow automation company careers pages (curated list TBD)
+- [ ] Hacker Club / Welcome to the Hack networks
+- [ ] LinkedIn Jobs (via RapidAPI)
+- [ ] Built In (NYC, SF, LA city-specific boards)
+- [ ] Smaller curated design + tech job lists
+
+**Standardized API integrations (low-hanging fruit):**
+- [ ] Greenhouse boards API (free, covers Faire, Ramp, Stripe, many others)
+- [ ] Ashby boards API (free, covers Ramp + others)
+- [ ] Wellfound / AngelList (startup-focused)
+- [ ] Y Combinator Work at a Startup
+
+**Design-specific sources:**
+- [ ] Dribbble Jobs
+- [ ] Designer News
+- [ ] Authentic Jobs
+
+**Curated boards:**
+- [ ] The Muse
+- [ ] Otta (now Welcome to the Jungle)
 
 **Architecture considerations:**
 - Need a normalized job schema so all sources map to the same shape
@@ -107,4 +123,17 @@ This is also where the scoring logic could get smarter — incorporate signals l
 
 ---
 
-Last updated: 2026-05-09
+### 🤖 Auto-fill manual job entry from URL (Phase 4)
+
+When adding a job manually, paste a URL and let the agent auto-extract:
+- Role title, company, location, salary
+- Job description text
+- Stage of company (from Crunchbase or LinkedIn lookup)
+
+**Approach:** Scrape job board URLs (Greenhouse, Ashby, LinkedIn, Built In, Wellfound) and extract structured fields. Falls back to "manual paste" if URL pattern not recognized.
+
+**Prerequisites:** Manual job entry working first (v1 of the feature).
+
+---
+
+Last updated: 2026-05-11

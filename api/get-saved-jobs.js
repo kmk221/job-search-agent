@@ -46,6 +46,17 @@ export default async function handler(req, res) {
         roleTitle: extractTitle(p, 'Role Title'),
         company: extractRichText(p, 'Company'),
         status: extractSelect(p, 'Status'),
+        source: extractSelect(p, 'Source'),
+        location: extractRichText(p, 'Location'),
+        salary: extractRichText(p, 'Salary Range'),
+        salaryMin: extractNumber(p, 'Salary Min'),
+        stage: extractSelect(p, 'Stage'),
+        industry: extractMultiSelect(p, 'Industry'),
+        link: extractUrl(p, 'Job URL'),
+        companyUrl: extractUrl(p, 'Company URL'),
+        fitScore: extractFitScore(p, 'Fit Score'),
+        fitReasoning: extractRichText(p, 'Why Good Fit'),
+        northStarMatch: extractCheckbox(p, 'North Star Match'),
       }))
       .filter((entry) => entry.roleTitle && entry.company);
 
@@ -75,4 +86,35 @@ function extractSelect(page, propName) {
   const prop = page.properties?.[propName];
   if (!prop || prop.type !== 'select' || !prop.select) return '';
   return prop.select.name || '';
+}
+
+function extractMultiSelect(page, propName) {
+  const prop = page.properties?.[propName];
+  if (!prop || prop.type !== 'multi_select' || !Array.isArray(prop.multi_select)) return '';
+  return prop.multi_select.map((o) => o.name).filter(Boolean).join(', ');
+}
+
+function extractUrl(page, propName) {
+  const prop = page.properties?.[propName];
+  if (!prop || prop.type !== 'url') return '';
+  return prop.url || '';
+}
+
+function extractNumber(page, propName) {
+  const prop = page.properties?.[propName];
+  if (!prop || prop.type !== 'number') return null;
+  return typeof prop.number === 'number' ? prop.number : null;
+}
+
+function extractCheckbox(page, propName) {
+  const prop = page.properties?.[propName];
+  if (!prop || prop.type !== 'checkbox') return false;
+  return Boolean(prop.checkbox);
+}
+
+// Fit Score is stored as a Notion percent (0..1). Return as 0..100 int.
+function extractFitScore(page, propName) {
+  const prop = page.properties?.[propName];
+  if (!prop || prop.type !== 'number' || typeof prop.number !== 'number') return null;
+  return Math.round(prop.number * 100);
 }
