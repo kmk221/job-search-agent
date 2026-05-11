@@ -3,6 +3,7 @@ import { Search, MapPin, DollarSign, CheckCircle2, XCircle, ExternalLink, Sparkl
 import './App.css';
 import { useSavedJobs } from './hooks/useSavedJobs';
 import AddJobModal from './components/AddJobModal';
+import DraftOutreachModal from './components/DraftOutreachModal';
 
 function applyFilters(list, query, location, stage) {
   let filtered = list;
@@ -77,6 +78,7 @@ const App = () => {
   const [notionSync, setNotionSync] = useState({});
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [outreachJob, setOutreachJob] = useState(null);
   const [toast, setToast] = useState(null);
 
   const {
@@ -606,6 +608,13 @@ const App = () => {
                               <span className="btn btn-saved">✅ Saved to Notion</span>
                             )}
                             <button
+                              className="btn btn-outreach"
+                              onClick={(e) => { e.stopPropagation(); setOutreachJob(job); }}
+                              title="Draft outreach message"
+                            >
+                              📧 Draft Outreach
+                            </button>
+                            <button
                               className="btn btn-undo"
                               onClick={(e) => removeFromNotion(job, e)}
                               title="Remove from Notion"
@@ -783,6 +792,13 @@ const App = () => {
         <AddJobModal
           onClose={() => setShowAddModal(false)}
           onSaved={handleManualSaved}
+        />
+      )}
+
+      {outreachJob && (
+        <DraftOutreachModal
+          job={outreachJob}
+          onClose={() => setOutreachJob(null)}
         />
       )}
 
