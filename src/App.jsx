@@ -1,17 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Search,
   MapPin,
   DollarSign,
-  CheckCircle2,
-  XCircle,
-  ExternalLink,
   Sparkles,
   Plus,
   X,
   PenLine,
   RefreshCw,
   AlertCircle,
+  CheckCircle2,
   Settings,
 } from 'lucide-react';
 import './App.css';
@@ -19,30 +17,11 @@ import { useSavedJobs } from './hooks/useSavedJobs';
 import AddJobModal from './components/AddJobModal';
 import DraftOutreachModal from './components/DraftOutreachModal';
 import RefreshModal from './components/RefreshModal';
+import JobDetailPane from './components/JobDetailPane';
+import JobDetailEmpty from './components/JobDetailEmpty';
+import { formatTimeAgo, isNewJob, isStaleRefresh } from './utils';
 
-// --- Utilities ---
-
-function formatTimeAgo(isoString) {
-  if (!isoString) return '';
-  const ms = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} hour${hrs !== 1 ? 's' : ''} ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days} day${days !== 1 ? 's' : ''} ago`;
-}
-
-function isNewJob(fetchedAt) {
-  if (!fetchedAt) return false;
-  return Date.now() - new Date(fetchedAt).getTime() < 24 * 60 * 60 * 1000;
-}
-
-function isStaleRefresh(scannedAt) {
-  if (!scannedAt) return false;
-  return Date.now() - new Date(scannedAt).getTime() > 24 * 60 * 60 * 1000;
-}
+// --- Data transforms ---
 
 function applyFilters(list, query, location, stage) {
   let filtered = list;
@@ -297,7 +276,9 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('all');
   const [selectedStage, setSelectedStage] = useState('all');
-  const [expandedJob, setExpandedJob] = useState(null);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [manuallyDeselected, setManuallyDeselected] = useState(false);
+  const [usingKeyboard, setUsingKeyboard] = useState(false);
   const [userTargets, setUserTargets] = useState([]);
   const [notionSync, setNotionSync] = useState({});
 
@@ -305,12 +286,22 @@ const App = () => {
   const [outreachJob, setOutreachJob] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // Phase 3.5: scraped jobs + refresh state
   const [scrapedJobs, setScrapedJobs] = useState([]);
   const [showRefreshModal, setShowRefreshModal] = useState(false);
-  const [refreshStatus, setRefreshStatus] = useState(null); // null | 'scanning'
+  const [refreshStatus, setRefreshStatus] = useState(null);
   const [lastRefreshInfo, setLastRefreshInfo] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showFailedCompanies, setShowFailedCompanies] = useState(false);
+
+  const searchInputRef = useRef(null);
+
+  // Refs so the keyboard handler always reads current values without re-registering
+  const filteredJobsRef = useRef(filteredJobs);
+  filteredJobsRef.current = filteredJobs;
+  const notionSyncRef = useRef(notionSync);
+  notionSyncRef.current = notionSync;
+  const selectedJobRef = useRef(selectedJob);
+  selectedJobRef.current = selectedJob;
 
   const {
     savedJobs,
@@ -353,6 +344,20 @@ const App = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualJobs, scrapedJobs]);
 
+  // Auto-select first job when filtered list changes (unless user explicitly deselected)
+  useEffect(() => {
+    if (manuallyDeselected) return;
+    if (filteredJobs.length === 0) {
+      setSelectedJob(null);
+      return;
+    }
+    setSelectedJob((prev) => {
+      if (!prev) return filteredJobs[0];
+      if (filteredJobs.find((j) => j.id === prev.id)) return prev;
+      return filteredJobs[0];
+    });
+  }, [filteredJobs, manuallyDeselected]);
+
   useEffect(() => {
     if (savedLoading || jobs.length === 0) return;
     const matches = [];
@@ -383,6 +388,65 @@ const App = () => {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Keyboard navigation — registered once, reads current values via refs
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const active = document.activeElement;
+      const inInput =
+        active &&
+        (active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.tagName === 'SELECT');
+
+      if (e.key === '/') {
+        if (!inInput) {
+          e.preventDefault();
+          searchInputRef.current?.focus();
+        }
+        return;
+      }
+
+      if (inInput) return;
+
+      const currentJobs = filteredJobsRef.current;
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setUsingKeyboard(true);
+        setManuallyDeselected(false);
+        setSelectedJob((prev) => {
+          if (!prev || currentJobs.length === 0) return currentJobs[0] || null;
+          const idx = currentJobs.findIndex((j) => j.id === prev.id);
+          if (idx === -1) return currentJobs[0];
+          const nextIdx =
+            e.key === 'ArrowDown'
+              ? Math.min(idx + 1, currentJobs.length - 1)
+              : Math.max(idx - 1, 0);
+          return currentJobs[nextIdx];
+        });
+      } else if (e.key === 'Escape') {
+        setSelectedJob(null);
+        setManuallyDeselected(true);
+        setUsingKeyboard(false);
+      } else if (e.key === 'Enter') {
+        const current = selectedJobRef.current;
+        if (!current) return;
+        const sync = notionSyncRef.current;
+        const entry = sync[current.id];
+        if (entry?.status === 'saved' && entry.pageUrl) {
+          window.open(entry.pageUrl, '_blank', 'noopener,noreferrer');
+        } else if (entry?.status !== 'saving' && entry?.status !== 'removing') {
+          // Trigger save — call the stable ref version to avoid stale closure
+          saveToNotionRef.current(current);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- Refresh handlers ---
 
   const runRefresh = async (force = false) => {
@@ -401,6 +465,8 @@ const App = () => {
       const refreshInfo = {
         scannedAt: data.scannedAt,
         totalCompaniesScanned: data.totalCompaniesScanned,
+        successfulFetches: data.successfulFetches,
+        failedCompanies: data.failedCompanies || [],
         cachedScores: data.cachedScores,
         freshScores: data.freshScores,
         designProductJobsAfterFilter: data.designProductJobsAfterFilter,
@@ -445,49 +511,17 @@ const App = () => {
     runRefresh(true);
   };
 
-  // --- Existing handlers ---
+  // --- Notion sync ---
 
-  const handleManualSaved = async ({ pageUrl, title, company }) => {
-    setShowAddModal(false);
-    setToast({ kind: 'success', text: `Saved "${title}" at ${company} to Notion.`, pageUrl });
-    await refetchSavedJobs();
-  };
-
-  const handleSearch = (query) => {
-    setSearchQuery(query);
-    setFilteredJobs(applyFilters(jobs, query, selectedLocation, selectedStage));
-  };
-
-  const handleLocationFilter = (location) => {
-    setSelectedLocation(location);
-    setFilteredJobs(applyFilters(jobs, searchQuery, location, selectedStage));
-  };
-
-  const handleStageFilter = (stage) => {
-    setSelectedStage(stage);
-    setFilteredJobs(applyFilters(jobs, searchQuery, selectedLocation, stage));
-  };
-
-  const getCriteriaStatus = (job) => {
-    const matchCount = Object.values(job.criteria).filter(Boolean).length;
-    return `${matchCount}/${Object.keys(job.criteria).length}`;
-  };
-
-  const toggleTarget = (jobId) => {
-    setUserTargets((prev) =>
-      prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId]
-    );
-  };
-
-  const saveToNotion = async (job, e) => {
+  const saveToNotion = useCallback(async (job, e) => {
     if (e) e.stopPropagation();
-    const current = notionSync[job.id]?.status;
+    const current = notionSyncRef.current[job.id]?.status;
     if (current === 'saving' || current === 'saved') return;
 
     setNotionSync((prev) => ({ ...prev, [job.id]: { status: 'saving' } }));
-    if (!userTargets.includes(job.id)) {
-      setUserTargets((prev) => [...prev, job.id]);
-    }
+    setUserTargets((prev) =>
+      prev.includes(job.id) ? prev : [...prev, job.id]
+    );
 
     try {
       const res = await fetch('/api/save-to-notion', {
@@ -531,7 +565,11 @@ const App = () => {
         [job.id]: { status: 'error', message: err.message },
       }));
     }
-  };
+  }, [updateLocalState]);
+
+  // Stable ref so keyboard handler can call the latest saveToNotion without stale closure
+  const saveToNotionRef = useRef(saveToNotion);
+  saveToNotionRef.current = saveToNotion;
 
   const removeFromNotion = async (job, e) => {
     if (e) e.stopPropagation();
@@ -566,6 +604,23 @@ const App = () => {
     }
   };
 
+  const handleManualSaved = async ({ pageUrl, title, company }) => {
+    setShowAddModal(false);
+    setToast({ kind: 'success', text: `Saved "${title}" at ${company} to Notion.`, pageUrl });
+    await refetchSavedJobs();
+  };
+
+  const toggleTarget = (jobId) => {
+    setUserTargets((prev) =>
+      prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId]
+    );
+  };
+
+  const getCriteriaStatus = (job) => {
+    const matchCount = Object.values(job.criteria).filter(Boolean).length;
+    return `${matchCount}/${Object.keys(job.criteria).length}`;
+  };
+
   const getNorthStarBadgeColor = (alignment) => {
     switch (alignment) {
       case 'Perfect': return 'badge-perfect';
@@ -574,6 +629,51 @@ const App = () => {
       default: return 'badge-default';
     }
   };
+
+  // --- Filter helpers ---
+
+  const selectAfterFilter = useCallback((newFiltered) => {
+    setSelectedJob((prev) => {
+      if (newFiltered.length === 0) return null;
+      if (!prev) return newFiltered[0];
+      if (newFiltered.find((j) => j.id === prev.id)) return prev;
+      return newFiltered[0];
+    });
+  }, []);
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    const newFiltered = applyFilters(jobs, query, selectedLocation, selectedStage);
+    setFilteredJobs(newFiltered);
+    selectAfterFilter(newFiltered);
+  };
+
+  const handleLocationFilter = (location) => {
+    setSelectedLocation(location);
+    const newFiltered = applyFilters(jobs, searchQuery, location, selectedStage);
+    setFilteredJobs(newFiltered);
+    selectAfterFilter(newFiltered);
+  };
+
+  const handleStageFilter = (stage) => {
+    setSelectedStage(stage);
+    const newFiltered = applyFilters(jobs, searchQuery, selectedLocation, stage);
+    setFilteredJobs(newFiltered);
+    selectAfterFilter(newFiltered);
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedLocation('all');
+    setSelectedStage('all');
+    const newFiltered = applyFilters(jobs, '', 'all', 'all');
+    setFilteredJobs(newFiltered);
+    setManuallyDeselected(false);
+    selectAfterFilter(newFiltered);
+  };
+
+  const failedCount = lastRefreshInfo?.failedCompanies?.length || 0;
+  const scoredCount = scrapedJobs.length;
 
   return (
     <div className="container">
@@ -584,63 +684,40 @@ const App = () => {
         </p>
       </div>
 
-      <div className="filters">
-        <div className="filter-grid">
-          <div>
-            <label className="filter-label">Search</label>
-            <div className="search-input-wrapper">
-              <Search className="search-icon" />
-              <input
-                type="text"
-                placeholder="Search companies, roles, industries..."
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                className="search-input"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="filter-label">Location</label>
-            <select
-              value={selectedLocation}
-              onChange={(e) => handleLocationFilter(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Locations</option>
-              <option value="Remote">Remote</option>
-              <option value="Austin">Austin</option>
-              <option value="Denver">Denver</option>
-              <option value="Portland">Portland</option>
-            </select>
-          </div>
-          <div>
-            <label className="filter-label">Stage</label>
-            <select
-              value={selectedStage}
-              onChange={(e) => handleStageFilter(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Stages</option>
-              <option value="Series B">Series B</option>
-              <option value="Series D">Series D</option>
-              <option value="Series E+">Series E+</option>
-              <option value="Public">Public</option>
-            </select>
-          </div>
-        </div>
-        <div className="job-count">{filteredJobs.length} jobs match your criteria</div>
-      </div>
-
       {/* Last refresh stats bar */}
       {lastRefreshInfo && (
         <div className="last-refresh-bar">
-          <span>
-            Last refreshed: <strong>{formatTimeAgo(lastRefreshInfo.scannedAt)}</strong>
-            {' | '}
-            {lastRefreshInfo.cachedScores} cached + {lastRefreshInfo.freshScores} new ={' '}
-            <strong>{lastRefreshInfo.designProductJobsAfterFilter}</strong> design/product roles
-            (showing 70%+ fit)
-          </span>
+          <div className="refresh-stats">
+            <div className="refresh-stat">
+              🔄 Last refreshed:{' '}
+              <strong>{formatTimeAgo(lastRefreshInfo.scannedAt)}</strong>
+            </div>
+            <div className="refresh-stat">
+              🏢{' '}
+              {lastRefreshInfo.successfulFetches ?? lastRefreshInfo.totalCompaniesScanned ?? '?'}{' '}
+              of {lastRefreshInfo.totalCompaniesScanned ?? '?'} companies scanned
+              {failedCount > 0 && (
+                <button
+                  className="failed-link"
+                  onClick={() => setShowFailedCompanies((v) => !v)}
+                  title="View failed companies"
+                >
+                  ({failedCount} failed)
+                </button>
+              )}
+            </div>
+            <div className="refresh-stat">
+              📋 {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
+            </div>
+            <div className="refresh-stat">
+              ✨ {scoredCount} scored 70%+
+              {(lastRefreshInfo.cachedScores > 0 || lastRefreshInfo.freshScores > 0) && (
+                <span className="refresh-cache-note">
+                  ({lastRefreshInfo.cachedScores} cached, {lastRefreshInfo.freshScores} fresh)
+                </span>
+              )}
+            </div>
+          </div>
           {isStaleRefresh(lastRefreshInfo.scannedAt) && (
             <button
               className="btn-link stale-nudge-btn"
@@ -649,6 +726,32 @@ const App = () => {
               Refresh now?
             </button>
           )}
+        </div>
+      )}
+
+      {/* Failed companies panel */}
+      {showFailedCompanies && failedCount > 0 && (
+        <div className="failed-panel">
+          <div className="failed-panel-header">
+            <span className="failed-panel-title">
+              Failed companies ({failedCount})
+            </span>
+            <button
+              className="modal-close"
+              onClick={() => setShowFailedCompanies(false)}
+              aria-label="Close"
+            >
+              <X style={{ width: 16, height: 16 }} />
+            </button>
+          </div>
+          <ul className="failed-list">
+            {lastRefreshInfo.failedCompanies.map((c, i) => (
+              <li key={i} className="failed-item">
+                <span className="failed-name">{typeof c === 'string' ? c : c.name}</span>
+                {c.reason && <span className="failed-reason">{c.reason}</span>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -719,279 +822,228 @@ const App = () => {
         </div>
       )}
 
-      <div className="jobs-list">
-        {filteredJobs.length === 0 ? (
-          <div className="empty">
-            <p>No jobs match your filters. Try adjusting your search.</p>
-          </div>
-        ) : (
-          filteredJobs.map((job) => (
-            <div
-              key={job.id}
-              className={`job-card ${expandedJob === job.id ? 'expanded' : ''}`}
-              onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
-            >
-              <div className="job-header">
-                <div className="job-top">
-                  <div>
-                    <h3 className="job-title">{job.title}</h3>
-                    <p className="job-company">{job.company}</p>
-                    {job.source && job.source !== 'Manual entry' && (
-                      <p className="job-source-label">From: {job.source}</p>
-                    )}
-                  </div>
-                  <div className="badges">
-                    {isNewJob(job.fetchedAt) && (
-                      <div className="badge badge-new">✨ NEW</div>
-                    )}
-                    {job.category && (
-                      <div className="badge badge-category">{job.category}</div>
-                    )}
-                    <div
-                      className={`badge fit-badge ${
-                        job.fitScore >= 85 ? 'badge-high' : 'badge-mid'
-                      }`}
-                    >
-                      {job.fitScore}% Fit
-                    </div>
-                    <div className={`badge ${getNorthStarBadgeColor(job.northStarAlignment)}`}>
-                      <Sparkles className="badge-icon" />
-                      {job.northStarAlignment}
-                    </div>
-                    {job.source === 'Manual entry' && (
-                      <div className="badge badge-manual" title="Manually added">
-                        <PenLine className="badge-icon" />
-                        Manual
-                      </div>
-                    )}
-                    <div
-                      className={`action-area ${savedLoading ? 'action-area--syncing' : ''}`}
-                      aria-busy={savedLoading}
-                    >
-                      {(() => {
-                        const entry = notionSync[job.id];
-                        const status = entry?.status;
-                        const pageUrl = entry?.pageUrl;
-                        const isSaving = status === 'saving';
-                        const isSaved = status === 'saved';
-                        const isRemoving = status === 'removing';
-                        const isError = status === 'error';
-                        const isTarget = userTargets.includes(job.id);
+      {/* === SPLIT PANEL LAYOUT === */}
+      <div className="split-panel">
 
-                        if (isSaved) {
-                          return (
-                            <>
-                              {pageUrl ? (
-                                <a
-                                  className="btn btn-saved"
-                                  href={pageUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  ✅ Saved — View in Notion ↗
-                                </a>
-                              ) : (
-                                <span className="btn btn-saved">✅ Saved to Notion</span>
-                              )}
-                              <button
-                                className="btn btn-outreach"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOutreachJob(job);
-                                }}
-                                title="Draft outreach message"
-                              >
-                                📧 Draft Outreach
-                              </button>
-                              <button
-                                className="btn btn-undo"
-                                onClick={(e) => removeFromNotion(job, e)}
-                                title="Remove from Notion"
-                              >
-                                Undo
-                              </button>
-                            </>
-                          );
-                        }
-                        if (isRemoving) {
-                          return <button className="btn" disabled>Removing...</button>;
-                        }
-                        const btnClass = `btn ${
-                          isSaving
-                            ? 'btn-saving'
-                            : isError
-                            ? 'btn-error'
-                            : isTarget
-                            ? 'btn-active'
-                            : ''
-                        }`.trim();
-                        const label = isSaving
-                          ? 'Saving...'
-                          : isError
-                          ? '❌ Failed - try again'
-                          : isTarget
-                          ? '✓ Interested'
-                          : 'Save';
-                        return (
-                          <button
-                            className={btnClass}
-                            disabled={isSaving || savedLoading}
-                            title={isError ? entry?.message : undefined}
-                            onClick={(e) => saveToNotion(job, e)}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="job-meta">
-                  <div className="meta-item">
-                    <MapPin className="meta-icon" />
-                    {job.location}
-                  </div>
-                  {job.salary && (
-                    <div className="meta-item">
-                      <DollarSign className="meta-icon" />
-                      {job.salary}
-                    </div>
-                  )}
-                  {job.stage && <div className="meta-badge">{job.stage}</div>}
-                  {job.industry && <div className="meta-badge">{job.industry}</div>}
+        {/* LEFT: Job list */}
+        <div className="split-list">
+          {/* Filters */}
+          <div className="filters">
+            <div className="filter-grid">
+              <div>
+                <label className="filter-label">Search</label>
+                <div className="search-input-wrapper">
+                  <Search className="search-icon" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search companies, roles, industries..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    className="search-input"
+                  />
                 </div>
               </div>
-
-              <div className="criteria">
-                {job.criteria.northStar ? (
-                  <div className="criteria-item criteria-check">
-                    <CheckCircle2 className="criteria-icon" />
-                    <span>North Star: Real-world impact ✓</span>
-                  </div>
-                ) : (
-                  <div className="criteria-item criteria-x">
-                    <XCircle className="criteria-icon" />
-                    <span>Limited real-world impact</span>
-                  </div>
-                )}
-                {job.criteria.salary ? (
-                  <div className="criteria-item criteria-check">
-                    <CheckCircle2 className="criteria-icon" />
-                    <span>Salary on target</span>
-                  </div>
-                ) : (
-                  <div className="criteria-item criteria-x">
-                    <XCircle className="criteria-icon" />
-                    <span>Salary unknown/below target</span>
-                  </div>
-                )}
-                {job.criteria.location ? (
-                  <div className="criteria-item criteria-check">
-                    <CheckCircle2 className="criteria-icon" />
-                    <span>Target location</span>
-                  </div>
-                ) : (
-                  <div className="criteria-item criteria-x">
-                    <XCircle className="criteria-icon" />
-                    <span>Non-target location</span>
-                  </div>
-                )}
-                <span className="criteria-count">Criteria: {getCriteriaStatus(job)}</span>
+              <div>
+                <label className="filter-label">Location</label>
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => handleLocationFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">All Locations</option>
+                  <option value="Remote">Remote</option>
+                  <option value="Austin">Austin</option>
+                  <option value="Denver">Denver</option>
+                  <option value="Portland">Portland</option>
+                </select>
               </div>
-
-              {expandedJob === job.id && (
-                <div className="job-expanded">
-                  {job.fitReasoning && (
-                    <div className="section">
-                      <h4 className="section-title">Your Fit (Against JOB_SEARCH_SKILL.md)</h4>
-                      <p className="section-text">{job.fitReasoning}</p>
-                    </div>
-                  )}
-                  {job.coreStrengths && job.coreStrengths.length > 0 && (
-                    <div className="section">
-                      <h4 className="section-title">Core Strengths Applied</h4>
-                      <div className="strengths">
-                        {job.coreStrengths.map((strength, idx) => (
-                          <span key={idx} className="strength-tag">
-                            {strength}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="section">
-                    <h4 className="section-title">Key Details</h4>
-                    <div className="details-grid">
-                      {job.funding && (
-                        <div>
-                          <span className="detail-label">Funding:</span> {job.funding}
-                        </div>
-                      )}
-                      {job.stage && (
-                        <div>
-                          <span className="detail-label">Stage:</span> {job.stage}
-                        </div>
-                      )}
-                      <div>
-                        <span className="detail-label">North Star Alignment:</span>{' '}
-                        {job.northStarAlignment}
-                      </div>
-                      {job.fetchedAt && (
-                        <div>
-                          <span className="detail-label">Fetched:</span>{' '}
-                          {formatTimeAgo(job.fetchedAt)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="section">
-                    <a
-                      href={job.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="link"
-                    >
-                      View Job Description
-                      <ExternalLink className="link-icon" />
-                    </a>
-                  </div>
-                </div>
-              )}
+              <div>
+                <label className="filter-label">Stage</label>
+                <select
+                  value={selectedStage}
+                  onChange={(e) => handleStageFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">All Stages</option>
+                  <option value="Series B">Series B</option>
+                  <option value="Series D">Series D</option>
+                  <option value="Series E+">Series E+</option>
+                  <option value="Public">Public</option>
+                </select>
+              </div>
             </div>
-          ))
-        )}
+            <div className="job-count">{filteredJobs.length} jobs match your criteria</div>
+          </div>
+
+          {/* Job rows */}
+          <div className="jobs-list">
+            {filteredJobs.length === 0 ? (
+              <div className="empty">
+                <p>No jobs match your filters. Try adjusting your search.</p>
+              </div>
+            ) : (
+              filteredJobs.map((job, index) => {
+                const isSelected = selectedJob?.id === job.id;
+                return (
+                  <div
+                    key={job.id}
+                    className={`job-row ${isSelected ? 'job-row--selected' : ''}`}
+                    onClick={() => {
+                      setSelectedJob(job);
+                      setManuallyDeselected(false);
+                      setUsingKeyboard(false);
+                    }}
+                  >
+                    <span className="row-number">{index + 1}</span>
+                    <div className="row-body">
+                      <div className="row-top">
+                        <div className="row-title-block">
+                          <span className="row-title">{job.title}</span>
+                          <span className="row-company">{job.company}</span>
+                        </div>
+                        <div className="row-badges">
+                          {isNewJob(job.fetchedAt) && (
+                            <div className="badge badge-new">✨ NEW</div>
+                          )}
+                          <div
+                            className={`badge fit-badge ${
+                              job.fitScore >= 85 ? 'badge-high' : 'badge-mid'
+                            }`}
+                          >
+                            {job.fitScore}%
+                          </div>
+                          <div className={`badge ${getNorthStarBadgeColor(job.northStarAlignment)}`}>
+                            <Sparkles className="badge-icon" />
+                            <span className="badge-align-label">{job.northStarAlignment}</span>
+                          </div>
+                          {job.source === 'Manual entry' && (
+                            <div className="badge badge-manual" title="Manually added">
+                              <PenLine className="badge-icon" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="row-meta">
+                        <span className="meta-item meta-item--small">
+                          {job.location}
+                        </span>
+                        {job.salary && (
+                          <span className="meta-item meta-item--small">{job.salary}</span>
+                        )}
+                        {job.stage && (
+                          <span className="meta-badge meta-badge--small">{job.stage}</span>
+                        )}
+                        <span className="criteria-count-small">
+                          {getCriteriaStatus(job)} criteria
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {userTargets.length > 0 && (
+            <div className="targets">
+              <h3 className="targets-title">Your Targets ({userTargets.length})</h3>
+              <div className="target-items">
+                {filteredJobs
+                  .filter((job) => userTargets.includes(job.id))
+                  .map((job) => (
+                    <div key={job.id} className="target-badge">
+                      <span>
+                        {job.company} - {job.title.split(' - ')[0]}
+                      </span>
+                      <button className="close-btn" onClick={() => toggleTarget(job.id)}>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          <div className="info-box">
+            <p>
+              <strong>Phase 3.5:</strong> Click &ldquo;Refresh Jobs&rdquo; to scan 125+ company
+              boards for design/product roles. New roles are scored with Claude Haiku (~$0.001
+              each); previously-seen roles load instantly from cache. Only roles scoring 70%+ fit
+              are shown from scraped results.
+            </p>
+          </div>
+        </div>
+
+        {/* RIGHT: Detail pane (desktop only — hidden via CSS on mobile) */}
+        <aside className="split-detail">
+          <div className="split-detail-inner">
+            {selectedJob ? (
+              <JobDetailPane
+                job={selectedJob}
+                notionSync={notionSync}
+                savedLoading={savedLoading}
+                userTargets={userTargets}
+                onSave={saveToNotion}
+                onRemove={removeFromNotion}
+                onDraftOutreach={setOutreachJob}
+                showKeyboardHints={usingKeyboard}
+              />
+            ) : (
+              <JobDetailEmpty
+                listIsEmpty={filteredJobs.length === 0}
+                onClearFilters={clearFilters}
+                onRefresh={() => setShowRefreshModal(true)}
+              />
+            )}
+          </div>
+        </aside>
       </div>
 
-      {userTargets.length > 0 && (
-        <div className="targets">
-          <h3 className="targets-title">Your Targets ({userTargets.length})</h3>
-          <div className="target-items">
-            {filteredJobs
-              .filter((job) => userTargets.includes(job.id))
-              .map((job) => (
-                <div key={job.id} className="target-badge">
-                  <span>
-                    {job.company} - {job.title.split(' - ')[0]}
-                  </span>
-                  <button className="close-btn" onClick={() => toggleTarget(job.id)}>
-                    ×
-                  </button>
-                </div>
-              ))}
+      {/* Mobile drawer — visible only on small screens via CSS */}
+      {selectedJob && (
+        <div
+          className="detail-drawer-backdrop"
+          onClick={() => {
+            setSelectedJob(null);
+            setManuallyDeselected(true);
+          }}
+        >
+          <div
+            className="detail-drawer"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedJob.title} at ${selectedJob.company}`}
+          >
+            <div className="detail-drawer-header">
+              <span className="detail-drawer-title">Job Details</span>
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setSelectedJob(null);
+                  setManuallyDeselected(true);
+                }}
+                aria-label="Close"
+              >
+                <X style={{ width: 18, height: 18 }} />
+              </button>
+            </div>
+            <div className="detail-drawer-body">
+              <JobDetailPane
+                job={selectedJob}
+                notionSync={notionSync}
+                savedLoading={savedLoading}
+                userTargets={userTargets}
+                onSave={saveToNotion}
+                onRemove={removeFromNotion}
+                onDraftOutreach={setOutreachJob}
+                showKeyboardHints={false}
+              />
+            </div>
           </div>
         </div>
       )}
-
-      <div className="info-box">
-        <p>
-          <strong>Phase 3.5:</strong> Click &ldquo;Refresh Jobs&rdquo; to scan 125+ company
-          boards for design/product roles. New roles are scored with Claude Haiku (~$0.001
-          each); previously-seen roles load instantly from cache. Only roles scoring 70%+ fit
-          are shown from scraped results.
-        </p>
-      </div>
 
       {showAddModal && (
         <AddJobModal onClose={() => setShowAddModal(false)} onSaved={handleManualSaved} />
