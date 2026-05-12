@@ -2,6 +2,13 @@
   "functions": {
     "api/score-job.js": {
       "includeFiles": "JOB_SEARCH_SKILL.md"
+    },
+    "api/fetch-jobs.js": {
+      "includeFiles": "JOB_SEARCH_SKILL.md,TARGET_COMPANIES.md",
+      "maxDuration": 60
+    },
+    "api/score-jobs-batch.js": {
+      "includeFiles": "JOB_SEARCH_SKILL.md"
     }
   }
 }
