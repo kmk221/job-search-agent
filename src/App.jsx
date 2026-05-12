@@ -673,7 +673,17 @@ const App = () => {
   };
 
   const failedCount = lastRefreshInfo?.failedCompanies?.length || 0;
-  const scoredCount = scrapedJobs.length;
+  // Total evaluated by AI = cached + fresh scored; 70%+ count = what we display from scrape
+  const totalEvaluated =
+    (lastRefreshInfo?.cachedScores ?? 0) + (lastRefreshInfo?.freshScores ?? 0);
+  const highFitCount = scrapedJobs.length;
+
+  // Source breakdown for visible list
+  const curatedCount = filteredJobs.filter((j) => typeof j.id === 'number').length;
+  const manualCount = filteredJobs.filter((j) => String(j.id).startsWith('manual-')).length;
+  const scrapedVisibleCount = filteredJobs.filter(
+    (j) => typeof j.id === 'string' && !String(j.id).startsWith('manual-')
+  ).length;
 
   return (
     <div className="container">
@@ -709,13 +719,16 @@ const App = () => {
             <div className="refresh-stat">
               📋 {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
             </div>
-            <div className="refresh-stat">
-              ✨ {scoredCount} scored 70%+
-              {(lastRefreshInfo.cachedScores > 0 || lastRefreshInfo.freshScores > 0) && (
+            {totalEvaluated > 0 && (
+              <div className="refresh-stat">
+                ✨ {totalEvaluated} evaluated by AI
                 <span className="refresh-cache-note">
                   ({lastRefreshInfo.cachedScores} cached, {lastRefreshInfo.freshScores} fresh)
                 </span>
-              )}
+              </div>
+            )}
+            <div className="refresh-stat">
+              🎯 <strong>{highFitCount}</strong> scored 70%+
             </div>
           </div>
           {isStaleRefresh(lastRefreshInfo.scannedAt) && (
@@ -822,60 +835,66 @@ const App = () => {
         </div>
       )}
 
+      {/* === FILTER BAR (full-width, above split) === */}
+      <div className="filter-bar">
+        <div className="filter-bar-controls">
+          <div className="filter-bar-search">
+            <div className="search-input-wrapper">
+              <Search className="search-icon" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search companies, roles, industries..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="search-input"
+              />
+            </div>
+          </div>
+          <select
+            value={selectedLocation}
+            onChange={(e) => handleLocationFilter(e.target.value)}
+            className="filter-select"
+          >
+            <option value="all">All Locations</option>
+            <option value="Remote">Remote</option>
+            <option value="Austin">Austin</option>
+            <option value="Denver">Denver</option>
+            <option value="Portland">Portland</option>
+          </select>
+          <select
+            value={selectedStage}
+            onChange={(e) => handleStageFilter(e.target.value)}
+            className="filter-select filter-select--stage"
+          >
+            <option value="all">All Stages</option>
+            <option value="Series B">Series B</option>
+            <option value="Series D">Series D</option>
+            <option value="Series E+">Series E+</option>
+            <option value="Public">Public</option>
+          </select>
+        </div>
+        <div className="filter-bar-count">
+          {filteredJobs.length} jobs match your filters
+          {(curatedCount > 0 || manualCount > 0 || scrapedVisibleCount > 0) && (
+            <span className="filter-source-breakdown">
+              {[
+                curatedCount > 0 && `${curatedCount} curated`,
+                manualCount > 0 && `${manualCount} manually added`,
+                scrapedVisibleCount > 0 && `${scrapedVisibleCount} from refresh`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* === SPLIT PANEL LAYOUT === */}
       <div className="split-panel">
 
         {/* LEFT: Job list */}
         <div className="split-list">
-          {/* Filters */}
-          <div className="filters">
-            <div className="filter-grid">
-              <div>
-                <label className="filter-label">Search</label>
-                <div className="search-input-wrapper">
-                  <Search className="search-icon" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder="Search companies, roles, industries..."
-                    value={searchQuery}
-                    onChange={(e) => handleSearch(e.target.value)}
-                    className="search-input"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="filter-label">Location</label>
-                <select
-                  value={selectedLocation}
-                  onChange={(e) => handleLocationFilter(e.target.value)}
-                  className="filter-select"
-                >
-                  <option value="all">All Locations</option>
-                  <option value="Remote">Remote</option>
-                  <option value="Austin">Austin</option>
-                  <option value="Denver">Denver</option>
-                  <option value="Portland">Portland</option>
-                </select>
-              </div>
-              <div>
-                <label className="filter-label">Stage</label>
-                <select
-                  value={selectedStage}
-                  onChange={(e) => handleStageFilter(e.target.value)}
-                  className="filter-select"
-                >
-                  <option value="all">All Stages</option>
-                  <option value="Series B">Series B</option>
-                  <option value="Series D">Series D</option>
-                  <option value="Series E+">Series E+</option>
-                  <option value="Public">Public</option>
-                </select>
-              </div>
-            </div>
-            <div className="job-count">{filteredJobs.length} jobs match your criteria</div>
-          </div>
-
           {/* Job rows */}
           <div className="jobs-list">
             {filteredJobs.length === 0 ? (

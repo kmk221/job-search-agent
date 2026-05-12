@@ -26,7 +26,52 @@ h1 {
   color: #2563eb;
 }
 
-/* Filters */
+/* Filter bar — full-width horizontal bar above split panel */
+.filter-bar {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-bar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.filter-bar-search {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.filter-bar-count {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-source-breakdown {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.filter-source-breakdown::before {
+  content: '—';
+  margin-right: 8px;
+}
+
+/* Filters (legacy, kept for possible reuse) */
 .filters {
   background: white;
   border-radius: 8px;
@@ -76,6 +121,12 @@ h1 {
 
 .filter-select {
   padding: 10px 12px;
+}
+
+/* Dropdowns inside the filter bar are auto-width, not full-width */
+.filter-bar .filter-select {
+  width: auto;
+  min-width: 140px;
 }
 
 .search-input:focus,
