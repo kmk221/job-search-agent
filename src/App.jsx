@@ -667,13 +667,11 @@ const App = () => {
     return `${matchCount}/${Object.keys(job.criteria).length}`;
   };
 
-  const getNorthStarBadgeColor = (alignment) => {
-    switch (alignment) {
-      case 'Perfect': return 'badge-perfect';
-      case 'Strong': return 'badge-strong';
-      case 'Moderate': return 'badge-moderate';
-      default: return 'badge-default';
-    }
+  const getFitBadgeClass = (score) => {
+    if (score >= 90) return 'badge-fit-top';
+    if (score >= 80) return 'badge-fit-good';
+    if (score >= 70) return 'badge-fit-mid';
+    return 'badge-fit-low';
   };
 
   // --- Filter helpers ---
@@ -1051,16 +1049,8 @@ const App = () => {
                           {isNewJob(job.fetchedAt) && (
                             <div className="badge badge-new"><Zap className="badge-icon" />New</div>
                           )}
-                          <div
-                            className={`badge fit-badge ${
-                              job.fitScore >= 85 ? 'badge-high' : 'badge-mid'
-                            }`}
-                          >
+                          <div className={`badge fit-badge ${getFitBadgeClass(job.fitScore)}`}>
                             {job.fitScore}%
-                          </div>
-                          <div className={`badge ${getNorthStarBadgeColor(job.northStarAlignment)}`}>
-                            <Sparkles className="badge-icon" />
-                            <span className="badge-align-label">{job.northStarAlignment}</span>
                           </div>
                           {job.source === 'Manual entry' && (
                             <div className="badge badge-manual" title="Manually added">
