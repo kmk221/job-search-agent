@@ -11,6 +11,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Settings,
+  Info,
 } from 'lucide-react';
 import './App.css';
 import { useSavedJobs } from './hooks/useSavedJobs';
@@ -292,6 +293,8 @@ const App = () => {
   const [lastRefreshInfo, setLastRefreshInfo] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFailedCompanies, setShowFailedCompanies] = useState(false);
+  const [showStatsPopover, setShowStatsPopover] = useState(false);
+  const statsPopoverRef = useRef(null);
 
   const searchInputRef = useRef(null);
 
@@ -387,6 +390,17 @@ const App = () => {
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!showStatsPopover) return;
+    const handler = (e) => {
+      if (statsPopoverRef.current && !statsPopoverRef.current.contains(e.target)) {
+        setShowStatsPopover(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showStatsPopover]);
 
   // Keyboard navigation — registered once, reads current values via refs
   useEffect(() => {
@@ -694,53 +708,6 @@ const App = () => {
         </p>
       </div>
 
-      {/* Last refresh stats bar */}
-      {lastRefreshInfo && (
-        <div className="last-refresh-bar">
-          <div className="refresh-stats">
-            <div className="refresh-stat">
-              🔄 Last refreshed:{' '}
-              <strong>{formatTimeAgo(lastRefreshInfo.scannedAt)}</strong>
-            </div>
-            <div className="refresh-stat">
-              🏢{' '}
-              {lastRefreshInfo.successfulFetches ?? lastRefreshInfo.totalCompaniesScanned ?? '?'}{' '}
-              of {lastRefreshInfo.totalCompaniesScanned ?? '?'} companies scanned
-              {failedCount > 0 && (
-                <button
-                  className="failed-link"
-                  onClick={() => setShowFailedCompanies((v) => !v)}
-                  title="View failed companies"
-                >
-                  ({failedCount} failed)
-                </button>
-              )}
-            </div>
-            <div className="refresh-stat">
-              📋 {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
-            </div>
-            {totalEvaluated > 0 && (
-              <div className="refresh-stat">
-                ✨ {totalEvaluated} evaluated by AI
-                <span className="refresh-cache-note">
-                  ({lastRefreshInfo.cachedScores} cached, {lastRefreshInfo.freshScores} fresh)
-                </span>
-              </div>
-            )}
-            <div className="refresh-stat">
-              🎯 <strong>{highFitCount}</strong> scored 70%+
-            </div>
-          </div>
-          {isStaleRefresh(lastRefreshInfo.scannedAt) && (
-            <button
-              className="btn-link stale-nudge-btn"
-              onClick={() => setShowRefreshModal(true)}
-            >
-              Refresh now?
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Failed companies panel */}
       {showFailedCompanies && failedCount > 0 && (
@@ -885,6 +852,61 @@ const App = () => {
               ]
                 .filter(Boolean)
                 .join(' · ')}
+            </span>
+          )}
+          {lastRefreshInfo && (
+            <span className="stats-popover-anchor" ref={statsPopoverRef}>
+              <button
+                className="stats-info-btn"
+                onClick={() => setShowStatsPopover((v) => !v)}
+                aria-label="Show refresh stats"
+                title="Refresh stats"
+              >
+                <Info className="stats-info-icon" />
+              </button>
+              {showStatsPopover && (
+                <div className="stats-popover">
+                  <div className="stats-popover-row">
+                    🔄 Last refreshed:{' '}
+                    <strong>{formatTimeAgo(lastRefreshInfo.scannedAt)}</strong>
+                    {isStaleRefresh(lastRefreshInfo.scannedAt) && (
+                      <button
+                        className="btn-link stale-nudge-btn"
+                        onClick={() => { setShowStatsPopover(false); setShowRefreshModal(true); }}
+                      >
+                        Refresh now?
+                      </button>
+                    )}
+                  </div>
+                  <div className="stats-popover-row">
+                    🏢{' '}
+                    {lastRefreshInfo.successfulFetches ?? lastRefreshInfo.totalCompaniesScanned ?? '?'} of{' '}
+                    {lastRefreshInfo.totalCompaniesScanned ?? '?'} companies scanned
+                    {failedCount > 0 && (
+                      <button
+                        className="failed-link"
+                        onClick={() => { setShowStatsPopover(false); setShowFailedCompanies((v) => !v); }}
+                      >
+                        ({failedCount} failed)
+                      </button>
+                    )}
+                  </div>
+                  <div className="stats-popover-row">
+                    📋 {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
+                  </div>
+                  {totalEvaluated > 0 && (
+                    <div className="stats-popover-row">
+                      ✨ {totalEvaluated} evaluated by AI{' '}
+                      <span className="refresh-cache-note">
+                        ({lastRefreshInfo.cachedScores} cached, {lastRefreshInfo.freshScores} fresh)
+                      </span>
+                    </div>
+                  )}
+                  <div className="stats-popover-row">
+                    🎯 <strong>{highFitCount}</strong> scored 70%+
+                  </div>
+                </div>
+              )}
             </span>
           )}
         </div>
