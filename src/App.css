@@ -481,15 +481,11 @@ h1 {
   height: 14px;
 }
 
-.fit-badge {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-
-.fit-badge.badge-mid {
-  background: #dbeafe;
-  color: #1e40af;
-}
+/* Fit score tiers — color-coded % badge */
+.badge-fit-top  { background: #dcfce7; color: #14532d; } /* 90+ dark green  */
+.badge-fit-good { background: #fef9c3; color: #713f12; } /* 80–89 amber     */
+.badge-fit-mid  { background: #ffedd5; color: #9a3412; } /* 70–79 orange    */
+.badge-fit-low  { background: #fee2e2; color: #991b1b; } /* <70  red        */
 
 .badge-perfect {
   background: #e0e7ff;
@@ -622,7 +618,7 @@ a.btn-saved:hover {
 }
 
 .criteria-check {
-  color: #16a34a;
+  color: #15803d;
 }
 
 .criteria-x {
