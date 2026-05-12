@@ -540,7 +540,7 @@ const App = () => {
           fitReasoning: job.fitReasoning,
           criteria: job.criteria,
           northStarMatch: job.criteria?.northStar,
-          source: job.source || 'Job Scout',
+          source: job.source || 'Job Search Agent',
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -688,7 +688,7 @@ const App = () => {
   return (
     <div className="container">
       <div className="header">
-        <h1>Job Scout Agent</h1>
+        <h1>Job Search Agent</h1>
         <p className="subtitle">
           Evaluated against your JOB_SEARCH_SKILL.md + North Star Principle
         </p>
