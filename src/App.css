@@ -71,6 +71,130 @@ h1 {
   margin-right: 8px;
 }
 
+/* Filter chips */
+.filter-bar-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-chips-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 56px;
+  flex-shrink: 0;
+}
+
+.filter-chip {
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.filter-chip--active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+.filter-chip--active:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: white;
+}
+
+/* Sort chips */
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sort-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 2px;
+}
+
+.sort-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sort-chip:hover {
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.sort-chip--active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: white;
+}
+
+.sort-chip-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Stats row icons */
+.stats-row-icon {
+  width: 13px;
+  height: 13px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* Refresh modal icon (replaces emoji span) */
+.refresh-meta-icon-svg {
+  width: 15px;
+  height: 15px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* Detail empty icon */
+.detail-empty-svg {
+  width: 36px;
+  height: 36px;
+  color: #94a3b8;
+}
+
 /* Not interested */
 .btn-not-interested {
   background: none;
@@ -1803,9 +1927,10 @@ a.btn-saved:hover {
 }
 
 .detail-empty-icon {
-  font-size: 40px;
   margin-bottom: 16px;
-  opacity: 0.5;
+  opacity: 0.6;
+  display: flex;
+  justify-content: center;
 }
 
 .detail-empty-title {

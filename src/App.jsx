@@ -12,6 +12,11 @@ import {
   CheckCircle2,
   Settings,
   Info,
+  Building2,
+  FileText,
+  Target,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import './App.css';
 import { useSavedJobs } from './hooks/useSavedJobs';
@@ -24,7 +29,7 @@ import { formatTimeAgo, isNewJob, isStaleRefresh } from './utils';
 
 // --- Data transforms ---
 
-function applyFilters(list, query, location, stage) {
+function applyFilters(list, query, locations, stages) {
   let filtered = list;
   if (query) {
     const q = query.toLowerCase();
@@ -36,13 +41,15 @@ function applyFilters(list, query, location, stage) {
         (job.category || '').toLowerCase().includes(q)
     );
   }
-  if (location !== 'all') {
+  if (locations.length > 0) {
     filtered = filtered.filter((job) =>
-      (job.location || '').toLowerCase().includes(location.toLowerCase())
+      locations.some((loc) =>
+        (job.location || '').toLowerCase().includes(loc.toLowerCase())
+      )
     );
   }
-  if (stage !== 'all') {
-    filtered = filtered.filter((job) => job.stage === stage);
+  if (stages.length > 0) {
+    filtered = filtered.filter((job) => stages.includes(job.stage));
   }
   return filtered;
 }
@@ -275,8 +282,9 @@ const App = () => {
   const [jobs, setJobs] = useState([]);
   const [filteredJobs, setFilteredJobs] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('all');
-  const [selectedStage, setSelectedStage] = useState('all');
+  const [selectedLocations, setSelectedLocations] = useState([]);
+  const [selectedStages, setSelectedStages] = useState([]);
+  const [sortOrder, setSortOrder] = useState('fit');
   const [selectedJob, setSelectedJob] = useState(null);
   const [manuallyDeselected, setManuallyDeselected] = useState(false);
   const [usingKeyboard, setUsingKeyboard] = useState(false);
@@ -307,13 +315,20 @@ const App = () => {
   const searchInputRef = useRef(null);
 
   // Jobs visible in the list (filtered + dismissed excluded unless showDismissed)
-  const visibleJobs = useMemo(
-    () =>
-      showDismissed
-        ? filteredJobs
-        : filteredJobs.filter((j) => !notInterestedIds.includes(j.id)),
-    [filteredJobs, notInterestedIds, showDismissed]
-  );
+  const visibleJobs = useMemo(() => {
+    const base = showDismissed
+      ? filteredJobs
+      : filteredJobs.filter((j) => !notInterestedIds.includes(j.id));
+    if (sortOrder === 'fit') {
+      return [...base].sort((a, b) => b.fitScore - a.fitScore);
+    }
+    if (sortOrder === 'newest') {
+      return [...base].sort(
+        (a, b) => new Date(b.fetchedAt || 0) - new Date(a.fetchedAt || 0)
+      );
+    }
+    return base;
+  }, [filteredJobs, notInterestedIds, showDismissed, sortOrder]);
 
   // Refs so the keyboard handler always reads current values without re-registering
   const filteredJobsRef = useRef(visibleJobs);
@@ -360,7 +375,7 @@ const App = () => {
   useEffect(() => {
     const combined = [...manualJobs, ...scrapedJobs, ...mockJobs];
     setJobs(combined);
-    setFilteredJobs(applyFilters(combined, searchQuery, selectedLocation, selectedStage));
+    setFilteredJobs(applyFilters(combined, searchQuery, selectedLocations, selectedStages));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualJobs, scrapedJobs]);
 
@@ -674,32 +689,38 @@ const App = () => {
 
   const handleSearch = (query) => {
     setSearchQuery(query);
-    const newFiltered = applyFilters(jobs, query, selectedLocation, selectedStage);
-    setFilteredJobs(newFiltered);
-    selectAfterFilter(newFiltered);
-  };
-
-  const handleLocationFilter = (location) => {
-    setSelectedLocation(location);
-    const newFiltered = applyFilters(jobs, searchQuery, location, selectedStage);
-    setFilteredJobs(newFiltered);
-    selectAfterFilter(newFiltered);
-  };
-
-  const handleStageFilter = (stage) => {
-    setSelectedStage(stage);
-    const newFiltered = applyFilters(jobs, searchQuery, selectedLocation, stage);
+    const newFiltered = applyFilters(jobs, query, selectedLocations, selectedStages);
     setFilteredJobs(newFiltered);
     selectAfterFilter(newFiltered);
   };
 
   const clearFilters = () => {
     setSearchQuery('');
-    setSelectedLocation('all');
-    setSelectedStage('all');
-    const newFiltered = applyFilters(jobs, '', 'all', 'all');
+    setSelectedLocations([]);
+    setSelectedStages([]);
+    const newFiltered = applyFilters(jobs, '', [], []);
     setFilteredJobs(newFiltered);
     setManuallyDeselected(false);
+    selectAfterFilter(newFiltered);
+  };
+
+  const toggleLocation = (loc) => {
+    const next = selectedLocations.includes(loc)
+      ? selectedLocations.filter((l) => l !== loc)
+      : [...selectedLocations, loc];
+    setSelectedLocations(next);
+    const newFiltered = applyFilters(jobs, searchQuery, next, selectedStages);
+    setFilteredJobs(newFiltered);
+    selectAfterFilter(newFiltered);
+  };
+
+  const toggleStage = (stage) => {
+    const next = selectedStages.includes(stage)
+      ? selectedStages.filter((s) => s !== stage)
+      : [...selectedStages, stage];
+    setSelectedStages(next);
+    const newFiltered = applyFilters(jobs, searchQuery, selectedLocations, next);
+    setFilteredJobs(newFiltered);
     selectAfterFilter(newFiltered);
   };
 
@@ -846,7 +867,7 @@ const App = () => {
 
       {/* === FILTER BAR (full-width, above split) === */}
       <div className="filter-bar">
-        <div className="filter-bar-controls">
+        <div className="filter-bar-top">
           <div className="filter-bar-search">
             <div className="search-input-wrapper">
               <Search className="search-icon" />
@@ -860,31 +881,50 @@ const App = () => {
               />
             </div>
           </div>
-          <select
-            value={selectedLocation}
-            onChange={(e) => handleLocationFilter(e.target.value)}
-            className="filter-select"
-          >
-            <option value="all">All Locations</option>
-            <option value="Remote">Remote</option>
-            <option value="Austin">Austin</option>
-            <option value="Denver">Denver</option>
-            <option value="Portland">Portland</option>
-          </select>
-          <select
-            value={selectedStage}
-            onChange={(e) => handleStageFilter(e.target.value)}
-            className="filter-select filter-select--stage"
-          >
-            <option value="all">All Stages</option>
-            <option value="Series B">Series B</option>
-            <option value="Series D">Series D</option>
-            <option value="Series E+">Series E+</option>
-            <option value="Public">Public</option>
-          </select>
+          <div className="sort-control">
+            <span className="sort-label">Sort</span>
+            <button
+              className={`sort-chip ${sortOrder === 'fit' ? 'sort-chip--active' : ''}`}
+              onClick={() => setSortOrder('fit')}
+            >
+              <Target className="sort-chip-icon" />
+              Match %
+            </button>
+            <button
+              className={`sort-chip ${sortOrder === 'newest' ? 'sort-chip--active' : ''}`}
+              onClick={() => setSortOrder('newest')}
+            >
+              <Clock className="sort-chip-icon" />
+              Newest
+            </button>
+          </div>
+        </div>
+        <div className="filter-chips-row">
+          <span className="filter-chips-label">Location</span>
+          {['Remote', 'Austin', 'Denver', 'Portland'].map((loc) => (
+            <button
+              key={loc}
+              className={`filter-chip ${selectedLocations.includes(loc) ? 'filter-chip--active' : ''}`}
+              onClick={() => toggleLocation(loc)}
+            >
+              {loc}
+            </button>
+          ))}
+        </div>
+        <div className="filter-chips-row">
+          <span className="filter-chips-label">Stage</span>
+          {['Series B', 'Series D', 'Series E+', 'Public', 'Unicorn'].map((stage) => (
+            <button
+              key={stage}
+              className={`filter-chip ${selectedStages.includes(stage) ? 'filter-chip--active' : ''}`}
+              onClick={() => toggleStage(stage)}
+            >
+              {stage}
+            </button>
+          ))}
         </div>
         <div className="filter-bar-count">
-          {filteredJobs.length} jobs match your filters
+          {visibleJobs.length} jobs match your filters
           {(curatedCount > 0 || manualCount > 0 || scrapedVisibleCount > 0) && (
             <span className="filter-source-breakdown">
               {[
@@ -925,7 +965,8 @@ const App = () => {
               {showStatsPopover && (
                 <div className="stats-popover">
                   <div className="stats-popover-row">
-                    🔄 Last refreshed:{' '}
+                    <Clock className="stats-row-icon" />
+                    Last refreshed:{' '}
                     <strong>{formatTimeAgo(lastRefreshInfo.scannedAt)}</strong>
                     {isStaleRefresh(lastRefreshInfo.scannedAt) && (
                       <button
@@ -937,7 +978,7 @@ const App = () => {
                     )}
                   </div>
                   <div className="stats-popover-row">
-                    🏢{' '}
+                    <Building2 className="stats-row-icon" />
                     {lastRefreshInfo.successfulFetches ?? lastRefreshInfo.totalCompaniesScanned ?? '?'} of{' '}
                     {lastRefreshInfo.totalCompaniesScanned ?? '?'} companies scanned
                     {failedCount > 0 && (
@@ -950,18 +991,21 @@ const App = () => {
                     )}
                   </div>
                   <div className="stats-popover-row">
-                    📋 {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
+                    <FileText className="stats-row-icon" />
+                    {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
                   </div>
                   {totalEvaluated > 0 && (
                     <div className="stats-popover-row">
-                      ✨ {totalEvaluated} evaluated by AI{' '}
+                      <Sparkles className="stats-row-icon" />
+                      {totalEvaluated} evaluated by AI{' '}
                       <span className="refresh-cache-note">
                         ({lastRefreshInfo.cachedScores} cached, {lastRefreshInfo.freshScores} fresh)
                       </span>
                     </div>
                   )}
                   <div className="stats-popover-row">
-                    🎯 <strong>{highFitCount}</strong> scored 70%+
+                    <Target className="stats-row-icon" />
+                    <strong>{highFitCount}</strong> scored 70%+
                   </div>
                 </div>
               )}
@@ -1005,7 +1049,7 @@ const App = () => {
                         </div>
                         <div className="row-badges">
                           {isNewJob(job.fetchedAt) && (
-                            <div className="badge badge-new">✨ NEW</div>
+                            <div className="badge badge-new"><Zap className="badge-icon" />New</div>
                           )}
                           <div
                             className={`badge fit-badge ${

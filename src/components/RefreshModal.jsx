@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, RefreshCw, Loader2 } from 'lucide-react';
+import { X, RefreshCw, Loader2, Timer, DollarSign } from 'lucide-react';
 
 export default function RefreshModal({ status, onCancel, onConfirm }) {
   const isScanning = status === 'scanning';
@@ -50,11 +50,11 @@ export default function RefreshModal({ status, onCancel, onConfirm }) {
               </p>
               <div className="refresh-meta">
                 <div className="refresh-meta-item">
-                  <span className="refresh-meta-icon">⏱</span>
+                  <Timer className="refresh-meta-icon-svg" />
                   <span>Takes ~30–60 seconds</span>
                 </div>
                 <div className="refresh-meta-item">
-                  <span className="refresh-meta-icon">💰</span>
+                  <DollarSign className="refresh-meta-icon-svg" />
                   <span>
                     Cost: ~$0.40 first time ever; ~$0.05 on subsequent
                     refreshes (only new jobs get scored)
