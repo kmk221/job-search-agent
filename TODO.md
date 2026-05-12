@@ -136,4 +136,28 @@ When adding a job manually, paste a URL and let the agent auto-extract:
 
 ---
 
+## 📋 Sourcing Expansion (Phase 3.5 follow-up)
+
+After multi-source aggregation is live and tested for a few weeks, come back to expand sourcing:
+
+### VC Portfolio Deep Dives
+- [ ] Collaborative Fund full portfolio — visit collabfund.com/portfolio/ and identify additional companies beyond the 14 currently added
+- [ ] NEA, First Round, Nascent VC, Women in VC portfolio companies
+
+### Aggregator Integrations
+- [ ] Fitt Jobs (jobs.fitt.co) — curated health/fitness/wellness board. Decide: build a scraper, or just monitor manually
+- [ ] Wellfound / AngelList — startup-focused job aggregator
+- [ ] Built In (NYC/Austin/Denver)
+- [ ] Y Combinator Work at a Startup
+
+### Custom ATS Scrapers
+- [ ] Google, Amazon, Microsoft, Meta, Apple, PayPal (each is its own integration)
+- [ ] Inspirato (Revolution Job Board)
+
+### Other Sources
+- [ ] Dribbble Jobs, Designer News, Authentic Jobs
+- [ ] LinkedIn Jobs (via RapidAPI — costs per query)
+
+---
+
 Last updated: 2026-05-11

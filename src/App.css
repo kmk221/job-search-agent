@@ -1186,3 +1186,211 @@ a.btn-saved:hover {
     left: 16px;
   }
 }
+
+/* ---- Phase 3.5 additions ---- */
+
+/* Toolbar layout */
+.jobs-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Refresh modal scanning state */
+.refresh-scanning {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0 8px;
+  text-align: center;
+}
+
+.refresh-spinner {
+  width: 36px;
+  height: 36px;
+  color: #2563eb;
+  animation: spin 1s linear infinite;
+}
+
+.refresh-scanning-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.refresh-scanning-sub {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  max-width: 380px;
+}
+
+/* Refresh confirm modal body */
+.refresh-desc {
+  font-size: 15px;
+  color: #1e293b;
+  margin: 0;
+  line-height: 1.55;
+}
+
+.refresh-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.refresh-meta-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.refresh-meta-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.refresh-cache-note {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+
+/* Last refresh bar */
+.last-refresh-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.stale-nudge-btn {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Advanced toggle */
+.btn-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #64748b;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s;
+}
+
+.btn-link:hover {
+  color: #334155;
+}
+
+.advanced-icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* Advanced panel */
+.advanced-panel {
+  background: #fafafa;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.advanced-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.advanced-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  min-width: 110px;
+  flex-shrink: 0;
+}
+
+.advanced-value {
+  font-size: 13px;
+  color: #0f172a;
+  font-family: monospace;
+}
+
+.advanced-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Job card: source label + new badges */
+.job-source-label {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 2px 0 0;
+}
+
+.badge-new {
+  background: #fef9c3;
+  color: #713f12;
+  border: 1px solid #fde68a;
+  font-weight: 600;
+}
+
+.badge-category {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  font-size: 12px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Error toast */
+.toast-error {
+  border-left-color: #dc2626;
+}
+
+.toast-icon-error {
+  color: #dc2626;
+}
