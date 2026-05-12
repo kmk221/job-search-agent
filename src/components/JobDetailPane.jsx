@@ -199,7 +199,7 @@ const JobDetailPane = ({
       {/* Fit reasoning */}
       {job.fitReasoning && (
         <div className="section">
-          <h4 className="section-title">Your Fit (Against JOB_SEARCH_SKILL.md)</h4>
+          <h4 className="section-title">Why this role fits</h4>
           <p className="section-text">{job.fitReasoning}</p>
         </div>
       )}

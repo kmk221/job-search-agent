@@ -764,9 +764,6 @@ const App = () => {
     <div className="container">
       <div className="header">
         <h1>Job Search Agent</h1>
-        <p className="subtitle">
-          Evaluated against your JOB_SEARCH_SKILL.md + North Star Principle
-        </p>
       </div>
 
 
@@ -1112,14 +1109,6 @@ const App = () => {
             </div>
           )}
 
-          <div className="info-box">
-            <p>
-              <strong>Phase 3.5:</strong> Click &ldquo;Refresh Jobs&rdquo; to scan 125+ company
-              boards for design/product roles. New roles are scored with Claude Haiku (~$0.001
-              each); previously-seen roles load instantly from cache. Only roles scoring 70%+ fit
-              are shown from scraped results.
-            </p>
-          </div>
         </div>
 
         {/* RIGHT: Detail pane (desktop only — hidden via CSS on mobile) */}
