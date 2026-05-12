@@ -28,6 +28,9 @@ const JobDetailPane = ({
   onRemove,
   onDraftOutreach,
   showKeyboardHints,
+  isNotInterested,
+  onNotInterested,
+  onUndoNotInterested,
 }) => {
   const entry = notionSync[job.id];
   const status = entry?.status;
@@ -180,6 +183,21 @@ const JobDetailPane = ({
               </button>
             );
           })()
+        )}
+        {isNotInterested ? (
+          <button
+            className="btn btn-undo"
+            onClick={() => onUndoNotInterested(job.id)}
+          >
+            ↩ Mark as interested
+          </button>
+        ) : (
+          <button
+            className="btn btn-not-interested"
+            onClick={() => onNotInterested(job)}
+          >
+            Not interested
+          </button>
         )}
       </div>
 

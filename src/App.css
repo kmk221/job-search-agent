@@ -71,6 +71,64 @@ h1 {
   margin-right: 8px;
 }
 
+/* Not interested */
+.btn-not-interested {
+  background: none;
+  border: 1px solid #e2e8f0;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-not-interested:hover {
+  border-color: #cbd5e1;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.job-row--dismissed {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.job-row--dismissed .row-title,
+.job-row--dismissed .row-company {
+  text-decoration: line-through;
+  text-decoration-color: #cbd5e1;
+}
+
+.row-dismissed-label {
+  font-size: 12px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.row-undo-btn {
+  font-size: 12px;
+  color: #2563eb;
+  padding: 0;
+}
+
+.dismissed-count {
+  font-size: 12px;
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dismissed-toggle {
+  font-size: 12px;
+  color: #2563eb;
+  padding: 0 2px;
+}
+
 /* Stats info button + popover */
 .stats-popover-anchor {
   position: relative;

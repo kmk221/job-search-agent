@@ -296,11 +296,28 @@ const App = () => {
   const [showStatsPopover, setShowStatsPopover] = useState(false);
   const statsPopoverRef = useRef(null);
 
+  const [notInterestedIds, setNotInterestedIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('notInterestedIds');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  const [showDismissed, setShowDismissed] = useState(false);
+
   const searchInputRef = useRef(null);
 
+  // Jobs visible in the list (filtered + dismissed excluded unless showDismissed)
+  const visibleJobs = useMemo(
+    () =>
+      showDismissed
+        ? filteredJobs
+        : filteredJobs.filter((j) => !notInterestedIds.includes(j.id)),
+    [filteredJobs, notInterestedIds, showDismissed]
+  );
+
   // Refs so the keyboard handler always reads current values without re-registering
-  const filteredJobsRef = useRef(filteredJobs);
-  filteredJobsRef.current = filteredJobs;
+  const filteredJobsRef = useRef(visibleJobs);
+  filteredJobsRef.current = visibleJobs;
   const notionSyncRef = useRef(notionSync);
   notionSyncRef.current = notionSync;
   const selectedJobRef = useRef(selectedJob);
@@ -347,19 +364,19 @@ const App = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualJobs, scrapedJobs]);
 
-  // Auto-select first job when filtered list changes (unless user explicitly deselected)
+  // Auto-select first visible job when visible list changes (unless user explicitly deselected)
   useEffect(() => {
     if (manuallyDeselected) return;
-    if (filteredJobs.length === 0) {
+    if (visibleJobs.length === 0) {
       setSelectedJob(null);
       return;
     }
     setSelectedJob((prev) => {
-      if (!prev) return filteredJobs[0];
-      if (filteredJobs.find((j) => j.id === prev.id)) return prev;
-      return filteredJobs[0];
+      if (!prev) return visibleJobs[0];
+      if (visibleJobs.find((j) => j.id === prev.id)) return prev;
+      return visibleJobs[0];
     });
-  }, [filteredJobs, manuallyDeselected]);
+  }, [visibleJobs, manuallyDeselected]);
 
   useEffect(() => {
     if (savedLoading || jobs.length === 0) return;
@@ -686,6 +703,31 @@ const App = () => {
     selectAfterFilter(newFiltered);
   };
 
+  const markNotInterested = useCallback((job) => {
+    // Advance to next visible job before dismissing
+    const currentVisible = filteredJobsRef.current;
+    const idx = currentVisible.findIndex((j) => j.id === job.id);
+    const remaining = currentVisible.filter((j) => j.id !== job.id);
+    const nextJob = remaining.length > 0 ? remaining[Math.min(idx, remaining.length - 1)] : null;
+
+    setNotInterestedIds((prev) => {
+      if (prev.includes(job.id)) return prev;
+      const next = [...prev, job.id];
+      try { localStorage.setItem('notInterestedIds', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    setSelectedJob(nextJob);
+    setManuallyDeselected(nextJob === null);
+  }, []);
+
+  const undoNotInterested = useCallback((jobId) => {
+    setNotInterestedIds((prev) => {
+      const next = prev.filter((id) => id !== jobId);
+      try { localStorage.setItem('notInterestedIds', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   const failedCount = lastRefreshInfo?.failedCompanies?.length || 0;
   // Total evaluated by AI = cached + fresh scored; 70%+ count = what we display from scrape
   const totalEvaluated =
@@ -854,6 +896,22 @@ const App = () => {
                 .join(' · ')}
             </span>
           )}
+          {(() => {
+            const dismissedInView = filteredJobs.filter((j) =>
+              notInterestedIds.includes(j.id)
+            ).length;
+            return dismissedInView > 0 ? (
+              <span className="dismissed-count">
+                · {dismissedInView} dismissed
+                <button
+                  className="btn-link dismissed-toggle"
+                  onClick={() => setShowDismissed((v) => !v)}
+                >
+                  {showDismissed ? 'hide' : 'show'}
+                </button>
+              </span>
+            ) : null;
+          })()}
           {lastRefreshInfo && (
             <span className="stats-popover-anchor" ref={statsPopoverRef}>
               <button
@@ -919,18 +977,20 @@ const App = () => {
         <div className="split-list">
           {/* Job rows */}
           <div className="jobs-list">
-            {filteredJobs.length === 0 ? (
+            {visibleJobs.length === 0 ? (
               <div className="empty">
                 <p>No jobs match your filters. Try adjusting your search.</p>
               </div>
             ) : (
-              filteredJobs.map((job, index) => {
+              visibleJobs.map((job, index) => {
                 const isSelected = selectedJob?.id === job.id;
+                const isDismissed = notInterestedIds.includes(job.id);
                 return (
                   <div
                     key={job.id}
-                    className={`job-row ${isSelected ? 'job-row--selected' : ''}`}
+                    className={`job-row ${isSelected ? 'job-row--selected' : ''} ${isDismissed ? 'job-row--dismissed' : ''}`}
                     onClick={() => {
+                      if (isDismissed) return;
                       setSelectedJob(job);
                       setManuallyDeselected(false);
                       setUsingKeyboard(false);
@@ -965,20 +1025,32 @@ const App = () => {
                           )}
                         </div>
                       </div>
-                      <div className="row-meta">
-                        <span className="meta-item meta-item--small">
-                          {job.location}
-                        </span>
-                        {job.salary && (
-                          <span className="meta-item meta-item--small">{job.salary}</span>
-                        )}
-                        {job.stage && (
-                          <span className="meta-badge meta-badge--small">{job.stage}</span>
-                        )}
-                        <span className="criteria-count-small">
-                          {getCriteriaStatus(job)} criteria
-                        </span>
-                      </div>
+                      {isDismissed ? (
+                        <div className="row-dismissed-label">
+                          Not interested
+                          <button
+                            className="btn-link row-undo-btn"
+                            onClick={(e) => { e.stopPropagation(); undoNotInterested(job.id); }}
+                          >
+                            Undo
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="row-meta">
+                          <span className="meta-item meta-item--small">
+                            {job.location}
+                          </span>
+                          {job.salary && (
+                            <span className="meta-item meta-item--small">{job.salary}</span>
+                          )}
+                          {job.stage && (
+                            <span className="meta-badge meta-badge--small">{job.stage}</span>
+                          )}
+                          <span className="criteria-count-small">
+                            {getCriteriaStatus(job)} criteria
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1029,6 +1101,9 @@ const App = () => {
                 onRemove={removeFromNotion}
                 onDraftOutreach={setOutreachJob}
                 showKeyboardHints={usingKeyboard}
+                isNotInterested={notInterestedIds.includes(selectedJob.id)}
+                onNotInterested={markNotInterested}
+                onUndoNotInterested={undoNotInterested}
               />
             ) : (
               <JobDetailEmpty
@@ -1080,6 +1155,9 @@ const App = () => {
                 onRemove={removeFromNotion}
                 onDraftOutreach={setOutreachJob}
                 showKeyboardHints={false}
+                isNotInterested={notInterestedIds.includes(selectedJob.id)}
+                onNotInterested={markNotInterested}
+                onUndoNotInterested={undoNotInterested}
               />
             </div>
           </div>
