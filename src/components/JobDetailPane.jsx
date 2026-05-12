@@ -7,6 +7,8 @@ import {
   ExternalLink,
   Sparkles,
   PenLine,
+  Mail,
+  Check,
 } from 'lucide-react';
 import { formatTimeAgo } from '../utils';
 
@@ -28,6 +30,9 @@ const JobDetailPane = ({
   onRemove,
   onDraftOutreach,
   showKeyboardHints,
+  isNotInterested,
+  onNotInterested,
+  onUndoNotInterested,
 }) => {
   const entry = notionSync[job.id];
   const status = entry?.status;
@@ -135,17 +140,17 @@ const JobDetailPane = ({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                ✅ Saved — View in Notion ↗
+                <CheckCircle2 className="btn-icon" /> Saved — View in Notion ↗
               </a>
             ) : (
-              <span className="btn btn-saved">✅ Saved to Notion</span>
+              <span className="btn btn-saved"><CheckCircle2 className="btn-icon" /> Saved to Notion</span>
             )}
             <button
               className="btn btn-outreach"
               onClick={() => onDraftOutreach(job)}
               title="Draft outreach message"
             >
-              📧 Draft Outreach
+              <Mail className="btn-icon" /> Draft Outreach
             </button>
             <button
               className="btn btn-undo"
@@ -165,9 +170,9 @@ const JobDetailPane = ({
             const label = isSaving
               ? 'Saving...'
               : isError
-              ? '❌ Failed - try again'
+              ? <><XCircle className="btn-icon" /> Failed — try again</>
               : isTarget
-              ? '✓ Interested'
+              ? <><Check className="btn-icon" /> Interested</>
               : 'Save';
             return (
               <button
@@ -180,6 +185,21 @@ const JobDetailPane = ({
               </button>
             );
           })()
+        )}
+        {isNotInterested ? (
+          <button
+            className="btn btn-undo"
+            onClick={() => onUndoNotInterested(job.id)}
+          >
+            ↩ Mark as interested
+          </button>
+        ) : (
+          <button
+            className="btn btn-not-interested"
+            onClick={() => onNotInterested(job)}
+          >
+            Not interested
+          </button>
         )}
       </div>
 

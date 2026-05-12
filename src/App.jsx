@@ -11,6 +11,12 @@ import {
   AlertCircle,
   CheckCircle2,
   Settings,
+  Info,
+  Building2,
+  FileText,
+  Target,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import './App.css';
 import { useSavedJobs } from './hooks/useSavedJobs';
@@ -23,7 +29,7 @@ import { formatTimeAgo, isNewJob, isStaleRefresh } from './utils';
 
 // --- Data transforms ---
 
-function applyFilters(list, query, location, stage) {
+function applyFilters(list, query, locations, stages) {
   let filtered = list;
   if (query) {
     const q = query.toLowerCase();
@@ -35,13 +41,15 @@ function applyFilters(list, query, location, stage) {
         (job.category || '').toLowerCase().includes(q)
     );
   }
-  if (location !== 'all') {
+  if (locations.length > 0) {
     filtered = filtered.filter((job) =>
-      (job.location || '').toLowerCase().includes(location.toLowerCase())
+      locations.some((loc) =>
+        (job.location || '').toLowerCase().includes(loc.toLowerCase())
+      )
     );
   }
-  if (stage !== 'all') {
-    filtered = filtered.filter((job) => job.stage === stage);
+  if (stages.length > 0) {
+    filtered = filtered.filter((job) => stages.includes(job.stage));
   }
   return filtered;
 }
@@ -274,8 +282,9 @@ const App = () => {
   const [jobs, setJobs] = useState([]);
   const [filteredJobs, setFilteredJobs] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('all');
-  const [selectedStage, setSelectedStage] = useState('all');
+  const [selectedLocations, setSelectedLocations] = useState([]);
+  const [selectedStages, setSelectedStages] = useState([]);
+  const [sortOrder, setSortOrder] = useState('fit');
   const [selectedJob, setSelectedJob] = useState(null);
   const [manuallyDeselected, setManuallyDeselected] = useState(false);
   const [usingKeyboard, setUsingKeyboard] = useState(false);
@@ -292,12 +301,38 @@ const App = () => {
   const [lastRefreshInfo, setLastRefreshInfo] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFailedCompanies, setShowFailedCompanies] = useState(false);
+  const [showStatsPopover, setShowStatsPopover] = useState(false);
+  const statsPopoverRef = useRef(null);
+
+  const [notInterestedIds, setNotInterestedIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('notInterestedIds');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  const [showDismissed, setShowDismissed] = useState(false);
 
   const searchInputRef = useRef(null);
 
+  // Jobs visible in the list (filtered + dismissed excluded unless showDismissed)
+  const visibleJobs = useMemo(() => {
+    const base = showDismissed
+      ? filteredJobs
+      : filteredJobs.filter((j) => !notInterestedIds.includes(j.id));
+    if (sortOrder === 'fit') {
+      return [...base].sort((a, b) => b.fitScore - a.fitScore);
+    }
+    if (sortOrder === 'newest') {
+      return [...base].sort(
+        (a, b) => new Date(b.fetchedAt || 0) - new Date(a.fetchedAt || 0)
+      );
+    }
+    return base;
+  }, [filteredJobs, notInterestedIds, showDismissed, sortOrder]);
+
   // Refs so the keyboard handler always reads current values without re-registering
-  const filteredJobsRef = useRef(filteredJobs);
-  filteredJobsRef.current = filteredJobs;
+  const filteredJobsRef = useRef(visibleJobs);
+  filteredJobsRef.current = visibleJobs;
   const notionSyncRef = useRef(notionSync);
   notionSyncRef.current = notionSync;
   const selectedJobRef = useRef(selectedJob);
@@ -340,23 +375,23 @@ const App = () => {
   useEffect(() => {
     const combined = [...manualJobs, ...scrapedJobs, ...mockJobs];
     setJobs(combined);
-    setFilteredJobs(applyFilters(combined, searchQuery, selectedLocation, selectedStage));
+    setFilteredJobs(applyFilters(combined, searchQuery, selectedLocations, selectedStages));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualJobs, scrapedJobs]);
 
-  // Auto-select first job when filtered list changes (unless user explicitly deselected)
+  // Auto-select first visible job when visible list changes (unless user explicitly deselected)
   useEffect(() => {
     if (manuallyDeselected) return;
-    if (filteredJobs.length === 0) {
+    if (visibleJobs.length === 0) {
       setSelectedJob(null);
       return;
     }
     setSelectedJob((prev) => {
-      if (!prev) return filteredJobs[0];
-      if (filteredJobs.find((j) => j.id === prev.id)) return prev;
-      return filteredJobs[0];
+      if (!prev) return visibleJobs[0];
+      if (visibleJobs.find((j) => j.id === prev.id)) return prev;
+      return visibleJobs[0];
     });
-  }, [filteredJobs, manuallyDeselected]);
+  }, [visibleJobs, manuallyDeselected]);
 
   useEffect(() => {
     if (savedLoading || jobs.length === 0) return;
@@ -387,6 +422,17 @@ const App = () => {
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!showStatsPopover) return;
+    const handler = (e) => {
+      if (statsPopoverRef.current && !statsPopoverRef.current.contains(e.target)) {
+        setShowStatsPopover(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showStatsPopover]);
 
   // Keyboard navigation — registered once, reads current values via refs
   useEffect(() => {
@@ -540,7 +586,7 @@ const App = () => {
           fitReasoning: job.fitReasoning,
           criteria: job.criteria,
           northStarMatch: job.criteria?.northStar,
-          source: job.source || 'Job Scout',
+          source: job.source || 'Job Search Agent',
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -643,34 +689,65 @@ const App = () => {
 
   const handleSearch = (query) => {
     setSearchQuery(query);
-    const newFiltered = applyFilters(jobs, query, selectedLocation, selectedStage);
-    setFilteredJobs(newFiltered);
-    selectAfterFilter(newFiltered);
-  };
-
-  const handleLocationFilter = (location) => {
-    setSelectedLocation(location);
-    const newFiltered = applyFilters(jobs, searchQuery, location, selectedStage);
-    setFilteredJobs(newFiltered);
-    selectAfterFilter(newFiltered);
-  };
-
-  const handleStageFilter = (stage) => {
-    setSelectedStage(stage);
-    const newFiltered = applyFilters(jobs, searchQuery, selectedLocation, stage);
+    const newFiltered = applyFilters(jobs, query, selectedLocations, selectedStages);
     setFilteredJobs(newFiltered);
     selectAfterFilter(newFiltered);
   };
 
   const clearFilters = () => {
     setSearchQuery('');
-    setSelectedLocation('all');
-    setSelectedStage('all');
-    const newFiltered = applyFilters(jobs, '', 'all', 'all');
+    setSelectedLocations([]);
+    setSelectedStages([]);
+    const newFiltered = applyFilters(jobs, '', [], []);
     setFilteredJobs(newFiltered);
     setManuallyDeselected(false);
     selectAfterFilter(newFiltered);
   };
+
+  const toggleLocation = (loc) => {
+    const next = selectedLocations.includes(loc)
+      ? selectedLocations.filter((l) => l !== loc)
+      : [...selectedLocations, loc];
+    setSelectedLocations(next);
+    const newFiltered = applyFilters(jobs, searchQuery, next, selectedStages);
+    setFilteredJobs(newFiltered);
+    selectAfterFilter(newFiltered);
+  };
+
+  const toggleStage = (stage) => {
+    const next = selectedStages.includes(stage)
+      ? selectedStages.filter((s) => s !== stage)
+      : [...selectedStages, stage];
+    setSelectedStages(next);
+    const newFiltered = applyFilters(jobs, searchQuery, selectedLocations, next);
+    setFilteredJobs(newFiltered);
+    selectAfterFilter(newFiltered);
+  };
+
+  const markNotInterested = useCallback((job) => {
+    // Advance to next visible job before dismissing
+    const currentVisible = filteredJobsRef.current;
+    const idx = currentVisible.findIndex((j) => j.id === job.id);
+    const remaining = currentVisible.filter((j) => j.id !== job.id);
+    const nextJob = remaining.length > 0 ? remaining[Math.min(idx, remaining.length - 1)] : null;
+
+    setNotInterestedIds((prev) => {
+      if (prev.includes(job.id)) return prev;
+      const next = [...prev, job.id];
+      try { localStorage.setItem('notInterestedIds', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    setSelectedJob(nextJob);
+    setManuallyDeselected(nextJob === null);
+  }, []);
+
+  const undoNotInterested = useCallback((jobId) => {
+    setNotInterestedIds((prev) => {
+      const next = prev.filter((id) => id !== jobId);
+      try { localStorage.setItem('notInterestedIds', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
 
   const failedCount = lastRefreshInfo?.failedCompanies?.length || 0;
   // Total evaluated by AI = cached + fresh scored; 70%+ count = what we display from scrape
@@ -688,59 +765,12 @@ const App = () => {
   return (
     <div className="container">
       <div className="header">
-        <h1>Job Scout Agent</h1>
+        <h1>Job Search Agent</h1>
         <p className="subtitle">
           Evaluated against your JOB_SEARCH_SKILL.md + North Star Principle
         </p>
       </div>
 
-      {/* Last refresh stats bar */}
-      {lastRefreshInfo && (
-        <div className="last-refresh-bar">
-          <div className="refresh-stats">
-            <div className="refresh-stat">
-              🔄 Last refreshed:{' '}
-              <strong>{formatTimeAgo(lastRefreshInfo.scannedAt)}</strong>
-            </div>
-            <div className="refresh-stat">
-              🏢{' '}
-              {lastRefreshInfo.successfulFetches ?? lastRefreshInfo.totalCompaniesScanned ?? '?'}{' '}
-              of {lastRefreshInfo.totalCompaniesScanned ?? '?'} companies scanned
-              {failedCount > 0 && (
-                <button
-                  className="failed-link"
-                  onClick={() => setShowFailedCompanies((v) => !v)}
-                  title="View failed companies"
-                >
-                  ({failedCount} failed)
-                </button>
-              )}
-            </div>
-            <div className="refresh-stat">
-              📋 {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
-            </div>
-            {totalEvaluated > 0 && (
-              <div className="refresh-stat">
-                ✨ {totalEvaluated} evaluated by AI
-                <span className="refresh-cache-note">
-                  ({lastRefreshInfo.cachedScores} cached, {lastRefreshInfo.freshScores} fresh)
-                </span>
-              </div>
-            )}
-            <div className="refresh-stat">
-              🎯 <strong>{highFitCount}</strong> scored 70%+
-            </div>
-          </div>
-          {isStaleRefresh(lastRefreshInfo.scannedAt) && (
-            <button
-              className="btn-link stale-nudge-btn"
-              onClick={() => setShowRefreshModal(true)}
-            >
-              Refresh now?
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Failed companies panel */}
       {showFailedCompanies && failedCount > 0 && (
@@ -837,7 +867,7 @@ const App = () => {
 
       {/* === FILTER BAR (full-width, above split) === */}
       <div className="filter-bar">
-        <div className="filter-bar-controls">
+        <div className="filter-bar-top">
           <div className="filter-bar-search">
             <div className="search-input-wrapper">
               <Search className="search-icon" />
@@ -851,31 +881,50 @@ const App = () => {
               />
             </div>
           </div>
-          <select
-            value={selectedLocation}
-            onChange={(e) => handleLocationFilter(e.target.value)}
-            className="filter-select"
-          >
-            <option value="all">All Locations</option>
-            <option value="Remote">Remote</option>
-            <option value="Austin">Austin</option>
-            <option value="Denver">Denver</option>
-            <option value="Portland">Portland</option>
-          </select>
-          <select
-            value={selectedStage}
-            onChange={(e) => handleStageFilter(e.target.value)}
-            className="filter-select filter-select--stage"
-          >
-            <option value="all">All Stages</option>
-            <option value="Series B">Series B</option>
-            <option value="Series D">Series D</option>
-            <option value="Series E+">Series E+</option>
-            <option value="Public">Public</option>
-          </select>
+          <div className="sort-control">
+            <span className="sort-label">Sort</span>
+            <button
+              className={`sort-chip ${sortOrder === 'fit' ? 'sort-chip--active' : ''}`}
+              onClick={() => setSortOrder('fit')}
+            >
+              <Target className="sort-chip-icon" />
+              Match %
+            </button>
+            <button
+              className={`sort-chip ${sortOrder === 'newest' ? 'sort-chip--active' : ''}`}
+              onClick={() => setSortOrder('newest')}
+            >
+              <Clock className="sort-chip-icon" />
+              Newest
+            </button>
+          </div>
+        </div>
+        <div className="filter-chips-row">
+          <span className="filter-chips-label">Location</span>
+          {['Remote', 'Austin', 'Denver', 'Portland'].map((loc) => (
+            <button
+              key={loc}
+              className={`filter-chip ${selectedLocations.includes(loc) ? 'filter-chip--active' : ''}`}
+              onClick={() => toggleLocation(loc)}
+            >
+              {loc}
+            </button>
+          ))}
+        </div>
+        <div className="filter-chips-row">
+          <span className="filter-chips-label">Stage</span>
+          {['Series B', 'Series D', 'Series E+', 'Public', 'Unicorn'].map((stage) => (
+            <button
+              key={stage}
+              className={`filter-chip ${selectedStages.includes(stage) ? 'filter-chip--active' : ''}`}
+              onClick={() => toggleStage(stage)}
+            >
+              {stage}
+            </button>
+          ))}
         </div>
         <div className="filter-bar-count">
-          {filteredJobs.length} jobs match your filters
+          {visibleJobs.length} jobs match your filters
           {(curatedCount > 0 || manualCount > 0 || scrapedVisibleCount > 0) && (
             <span className="filter-source-breakdown">
               {[
@@ -885,6 +934,81 @@ const App = () => {
               ]
                 .filter(Boolean)
                 .join(' · ')}
+            </span>
+          )}
+          {(() => {
+            const dismissedInView = filteredJobs.filter((j) =>
+              notInterestedIds.includes(j.id)
+            ).length;
+            return dismissedInView > 0 ? (
+              <span className="dismissed-count">
+                · {dismissedInView} dismissed
+                <button
+                  className="btn-link dismissed-toggle"
+                  onClick={() => setShowDismissed((v) => !v)}
+                >
+                  {showDismissed ? 'hide' : 'show'}
+                </button>
+              </span>
+            ) : null;
+          })()}
+          {lastRefreshInfo && (
+            <span className="stats-popover-anchor" ref={statsPopoverRef}>
+              <button
+                className="stats-info-btn"
+                onClick={() => setShowStatsPopover((v) => !v)}
+                aria-label="Show refresh stats"
+                title="Refresh stats"
+              >
+                <Info className="stats-info-icon" />
+              </button>
+              {showStatsPopover && (
+                <div className="stats-popover">
+                  <div className="stats-popover-row">
+                    <Clock className="stats-row-icon" />
+                    Last refreshed:{' '}
+                    <strong>{formatTimeAgo(lastRefreshInfo.scannedAt)}</strong>
+                    {isStaleRefresh(lastRefreshInfo.scannedAt) && (
+                      <button
+                        className="btn-link stale-nudge-btn"
+                        onClick={() => { setShowStatsPopover(false); setShowRefreshModal(true); }}
+                      >
+                        Refresh now?
+                      </button>
+                    )}
+                  </div>
+                  <div className="stats-popover-row">
+                    <Building2 className="stats-row-icon" />
+                    {lastRefreshInfo.successfulFetches ?? lastRefreshInfo.totalCompaniesScanned ?? '?'} of{' '}
+                    {lastRefreshInfo.totalCompaniesScanned ?? '?'} companies scanned
+                    {failedCount > 0 && (
+                      <button
+                        className="failed-link"
+                        onClick={() => { setShowStatsPopover(false); setShowFailedCompanies((v) => !v); }}
+                      >
+                        ({failedCount} failed)
+                      </button>
+                    )}
+                  </div>
+                  <div className="stats-popover-row">
+                    <FileText className="stats-row-icon" />
+                    {lastRefreshInfo.designProductJobsAfterFilter} design/product roles found
+                  </div>
+                  {totalEvaluated > 0 && (
+                    <div className="stats-popover-row">
+                      <Sparkles className="stats-row-icon" />
+                      {totalEvaluated} evaluated by AI{' '}
+                      <span className="refresh-cache-note">
+                        ({lastRefreshInfo.cachedScores} cached, {lastRefreshInfo.freshScores} fresh)
+                      </span>
+                    </div>
+                  )}
+                  <div className="stats-popover-row">
+                    <Target className="stats-row-icon" />
+                    <strong>{highFitCount}</strong> scored 70%+
+                  </div>
+                </div>
+              )}
             </span>
           )}
         </div>
@@ -897,18 +1021,20 @@ const App = () => {
         <div className="split-list">
           {/* Job rows */}
           <div className="jobs-list">
-            {filteredJobs.length === 0 ? (
+            {visibleJobs.length === 0 ? (
               <div className="empty">
                 <p>No jobs match your filters. Try adjusting your search.</p>
               </div>
             ) : (
-              filteredJobs.map((job, index) => {
+              visibleJobs.map((job, index) => {
                 const isSelected = selectedJob?.id === job.id;
+                const isDismissed = notInterestedIds.includes(job.id);
                 return (
                   <div
                     key={job.id}
-                    className={`job-row ${isSelected ? 'job-row--selected' : ''}`}
+                    className={`job-row ${isSelected ? 'job-row--selected' : ''} ${isDismissed ? 'job-row--dismissed' : ''}`}
                     onClick={() => {
+                      if (isDismissed) return;
                       setSelectedJob(job);
                       setManuallyDeselected(false);
                       setUsingKeyboard(false);
@@ -923,7 +1049,7 @@ const App = () => {
                         </div>
                         <div className="row-badges">
                           {isNewJob(job.fetchedAt) && (
-                            <div className="badge badge-new">✨ NEW</div>
+                            <div className="badge badge-new"><Zap className="badge-icon" />New</div>
                           )}
                           <div
                             className={`badge fit-badge ${
@@ -943,20 +1069,32 @@ const App = () => {
                           )}
                         </div>
                       </div>
-                      <div className="row-meta">
-                        <span className="meta-item meta-item--small">
-                          {job.location}
-                        </span>
-                        {job.salary && (
-                          <span className="meta-item meta-item--small">{job.salary}</span>
-                        )}
-                        {job.stage && (
-                          <span className="meta-badge meta-badge--small">{job.stage}</span>
-                        )}
-                        <span className="criteria-count-small">
-                          {getCriteriaStatus(job)} criteria
-                        </span>
-                      </div>
+                      {isDismissed ? (
+                        <div className="row-dismissed-label">
+                          Not interested
+                          <button
+                            className="btn-link row-undo-btn"
+                            onClick={(e) => { e.stopPropagation(); undoNotInterested(job.id); }}
+                          >
+                            Undo
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="row-meta">
+                          <span className="meta-item meta-item--small">
+                            {job.location}
+                          </span>
+                          {job.salary && (
+                            <span className="meta-item meta-item--small">{job.salary}</span>
+                          )}
+                          {job.stage && (
+                            <span className="meta-badge meta-badge--small">{job.stage}</span>
+                          )}
+                          <span className="criteria-count-small">
+                            {getCriteriaStatus(job)} criteria
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1007,6 +1145,9 @@ const App = () => {
                 onRemove={removeFromNotion}
                 onDraftOutreach={setOutreachJob}
                 showKeyboardHints={usingKeyboard}
+                isNotInterested={notInterestedIds.includes(selectedJob.id)}
+                onNotInterested={markNotInterested}
+                onUndoNotInterested={undoNotInterested}
               />
             ) : (
               <JobDetailEmpty
@@ -1058,6 +1199,9 @@ const App = () => {
                 onRemove={removeFromNotion}
                 onDraftOutreach={setOutreachJob}
                 showKeyboardHints={false}
+                isNotInterested={notInterestedIds.includes(selectedJob.id)}
+                onNotInterested={markNotInterested}
+                onUndoNotInterested={undoNotInterested}
               />
             </div>
           </div>
